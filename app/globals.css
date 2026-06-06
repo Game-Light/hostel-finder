@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'Mona Sans';
+  src: url('/fonts/Mona-Sans.ttf') format('truetype'),
+     url('/fonts/Mona-Sans-Regular.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: 'Mona Sans', sans-serif;
+
+  --color-brand-green: #37D76A;
+  --color-forest-dark: #034338;
+  --color-forest-mid: #0a5244;
+  --color-text-dark: #0A2A23;
+  --color-subtle-gray: #F4F6F5;
+  --color-subtle-gray-2: #E8EDEB;
+
+  --radius-card: 0.875rem;
+  --radius-pill: 9999px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: 'Mona Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #FFFFFF;
+  color: #0A2A23;
+  line-height: 1.6;
+  font-family: 'Mona Sans', sans-serif;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
