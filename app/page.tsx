@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import Navbar from '@/components/Navbar'
 
 const featuredListings = [
   {
@@ -82,25 +83,7 @@ export default function HomePage() {
     <div className="min-h-screen">
 
       {/* ── Navbar ── */}
-      <nav style={{ backgroundColor: '#034338' }} className="sticky top-0 z-50 border-b border-white/10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link href="/">
-            <Image src="/logo/Logo-horizontal.svg" alt="Hostel Finder" width={140} height={36} priority />
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/login" style={{ color: '#FFFFFF' }} className="text-sm font-medium px-3 py-2 hover:text-[#37D76A] transition-colors">
-              Log in
-            </Link>
-            <Link
-              href="/register"
-              style={{ backgroundColor: '#37D76A' }}
-              className="text-[#034338] font-bold text-sm px-5 py-2.5 rounded-full hover:opacity-90 transition-opacity"
-            >
-              List your hostel
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* ── Hero ── */}
       <section style={{ backgroundColor: '#034338' }} className="relative overflow-hidden pt-16 pb-24 px-4 sm:px-6">
