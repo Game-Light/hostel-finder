@@ -55,6 +55,7 @@ export default function NewListingPage() {
   const [distance, setDistance]       = useState('5 mins walk')
   const [facilities, setFacilities]   = useState<string[]>([])
   const [whatsapp, setWhatsapp]       = useState('')
+  const [address, setAddress]         = useState('')
 
   // Media
   const [photos, setPhotos]           = useState<File[]>([])
@@ -211,6 +212,7 @@ export default function NewListingPage() {
           facilities,
           whatsapp_number: whatsapp,
           video_url:       videoUrl,
+          address:         address || null,
           status:          'pending',
           slug,
         })
@@ -433,6 +435,25 @@ export default function NewListingPage() {
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                  Exact address <span className="font-normal" style={{ color: '#4B6B62' }}>(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  placeholder="e.g. No. 12 Adeyemi Street, behind First Bank"
+                  className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                  onFocus={e => e.target.style.borderColor = '#034338'}
+                  onBlur={e => e.target.style.borderColor = '#E8EDEB'}
+                />
+                <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
+                  Helps students find the hostel more easily.
+                </p>
               </div>
             </div>
           </div>

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import AuthGateModal from '@/components/AuthGateModal'
 import { supabase } from '@/lib/supabase'
 
 interface Listing {
@@ -47,21 +48,39 @@ export default function HomePage() {
   const [activeChip, setActiveChip]   = useState('')
   const [listings, setListings]       = useState<Listing[]>([])
   const [loadingData, setLoadingData] = useState(true)
+  const [isLoggedIn, setIsLoggedIn]   = useState(false)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   useEffect(() => {
-    const fetchFeatured = async () => {
-      const { data } = await supabase
-        .from('listings')
-        .select('id, name, area, distance_tag, price, room_type, rooms_available, slug, listing_photos(photo_url, is_cover)')
-        .eq('status', 'active')
-        .gt('rooms_available', 0)
-        .order('created_at', { ascending: false })
-        .limit(6)
-      setListings(data || [])
+    const fetchData = async () => {
+      const [{ data: { user } }, { data: listingData }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase
+          .from('listings')
+          .select('id, name, area, distance_tag, price, room_type, rooms_available, slug, listing_photos(photo_url, is_cover)')
+          .eq('status', 'active')
+          .gt('rooms_available', 0)
+          .order('created_at', { ascending: false })
+          .limit(6),
+      ])
+      setIsLoggedIn(!!user)
+      setListings(listingData || [])
       setLoadingData(false)
     }
-    fetchFeatured()
+    fetchData()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setIsLoggedIn(!!session?.user)
+    })
+    return () => subscription.unsubscribe()
   }, [])
+
+  const handleCardClick = useCallback((e: React.MouseEvent, slug: string) => {
+    if (!isLoggedIn) {
+      e.preventDefault()
+      setShowAuthModal(true)
+    }
+  }, [isLoggedIn])
 
   const navigate = (searchVal: string, chipVal: string) => {
     const params = new URLSearchParams()
@@ -84,6 +103,8 @@ export default function HomePage() {
     <div className="min-h-screen">
       <Navbar />
 
+      {showAuthModal && <AuthGateModal onClose={() => setShowAuthModal(false)} />}
+
       {/* ── Hero ── */}
       <section style={{ backgroundColor: '#034338' }} className="relative overflow-hidden pt-16 pb-24 px-4 sm:px-6">
         <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{
@@ -96,18 +117,15 @@ export default function HomePage() {
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#37D76A' }} />
             Now live at FUOYE
           </div>
-
           <h1 className="text-4xl sm:text-5xl lg:text-[3.75rem] font-black text-white leading-[1.1] tracking-tight mb-6">
             Discover Your{' '}
             <span style={{ color: '#37D76A' }}>Perfect Home</span>{' '}
             Away From Home.
           </h1>
-
           <p className="text-white/80 text-lg max-w-lg mx-auto mb-10 leading-relaxed">
             Browse verified off-campus hostels near FUOYE — real photos, clear prices, and direct agent contact.
           </p>
 
-          {/* Search bar */}
           <form onSubmit={handleSearch} className="bg-white rounded-2xl p-2 flex flex-col sm:flex-row gap-2 max-w-xl mx-auto shadow-2xl shadow-black/30">
             <div className="flex-1 flex items-center gap-3 px-4 py-2">
               <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -134,7 +152,6 @@ export default function HomePage() {
             </button>
           </form>
 
-          {/* Filter chips */}
           <div className="flex flex-wrap justify-center gap-2 mt-5">
             {CHIPS.map(chip => (
               <button key={chip.value} type="button" onClick={() => handleChip(chip.value)}
@@ -231,8 +248,12 @@ export default function HomePage() {
                 const label = roomTypeMap[listing.room_type] || listing.room_type
                 const badge = roomTypeBadge[label] || { bg: '#F4F6F5', text: '#4B6B62' }
                 return (
-                  <Link href={`/listings/${listing.slug}`} key={listing.id}
-                    className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <Link
+                    href={`/listings/${listing.slug}`}
+                    key={listing.id}
+                    onClick={e => handleCardClick(e, listing.slug)}
+                    className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                  >
                     <div className="h-44 relative overflow-hidden" style={{ backgroundColor: '#1a4a3a' }}>
                       {cover ? (
                         <img src={cover.photo_url} alt={listing.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />

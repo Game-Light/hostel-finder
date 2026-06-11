@@ -12,7 +12,7 @@ interface ListingDetail {
   id: string; name: string; description: string; area: string
   distance_tag: string; price: number; room_type: string
   rooms_available: number; facilities: string[]; whatsapp_number: string
-  video_url: string | null; slug: string; views: number
+  video_url: string | null; slug: string; views: number; address: string | null
   listing_photos: Photo[]
   users: { full_name: string; phone: string | null }
 }
@@ -289,6 +289,11 @@ export default function HostelDetailPage() {
                     </svg>
                     {listing.area} · {listing.distance_tag} to FUOYE main gate
                   </div>
+                  {listing.address && (
+                    <p className="text-xs font-medium pl-5 mt-0.5" style={{ color: '#4B6B62' }}>
+                      📍 {listing.address}
+                    </p>
+                  )}
                 </div>
                 <span className="text-sm font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>{label}</span>
               </div>

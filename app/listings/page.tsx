@@ -4,51 +4,35 @@ import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import AuthGateModal from '@/components/AuthGateModal'
 import { supabase } from '@/lib/supabase'
 
 interface Listing {
-  id: string
-  name: string
-  area: string
-  distance_tag: string
-  price: number
-  room_type: string
-  rooms_available: number
-  slug: string
+  id: string; name: string; area: string; distance_tag: string
+  price: number; room_type: string; rooms_available: number; slug: string
   listing_photos: { photo_url: string; is_cover: boolean }[]
 }
 
 const ROOM_TYPES = ['All', 'Self-contain', 'Single Room', 'Shared Room', 'Mini Flat']
 
 const roomTypeMap: Record<string, string> = {
-  self_contain: 'Self-contain',
-  single:       'Single Room',
-  shared:       'Shared Room',
-  mini_flat:    'Mini Flat',
+  self_contain: 'Self-contain', single: 'Single Room',
+  shared: 'Shared Room',       mini_flat: 'Mini Flat',
 }
-
 const roomTypeToDb: Record<string, string> = {
-  'Self-contain': 'self_contain',
-  'Single Room':  'single',
-  'Shared Room':  'shared',
-  'Mini Flat':    'mini_flat',
+  'Self-contain': 'self_contain', 'Single Room': 'single',
+  'Shared Room':  'shared',       'Mini Flat':   'mini_flat',
 }
-
-// URL param value → display label
 const urlTypeToLabel: Record<string, string> = {
-  self_contain: 'Self-contain',
-  single:       'Single Room',
-  shared:       'Shared Room',
-  mini_flat:    'Mini Flat',
+  self_contain: 'Self-contain', single: 'Single Room',
+  shared: 'Shared Room',        mini_flat: 'Mini Flat',
 }
-
 const roomTypeBadge: Record<string, { bg: string; text: string }> = {
   'Self-contain': { bg: '#DCFCE7', text: '#166534' },
   'Single Room':  { bg: '#DBEAFE', text: '#1E40AF' },
   'Shared Room':  { bg: '#FEF3C7', text: '#92400E' },
   'Mini Flat':    { bg: '#EDE9FE', text: '#5B21B6' },
 }
-
 const SORT_OPTIONS = [
   { label: 'Newest first',    value: 'newest' },
   { label: 'Price: Low–High', value: 'price_asc' },
@@ -60,69 +44,76 @@ function ListingsContent() {
 
   const [allListings, setAllListings]   = useState<Listing[]>([])
   const [loadingData, setLoadingData]   = useState(true)
+  const [isLoggedIn, setIsLoggedIn]     = useState(false)
+  const [showAuthModal, setShowAuthModal] = useState(false)
   const [showFilters, setShowFilters]   = useState(false)
 
-  // Initialise from URL params
   const [search, setSearch]     = useState(searchParams.get('search') || '')
   const [roomType, setRoomType] = useState(() => {
-    const urlType = searchParams.get('type')
-    return urlType ? (urlTypeToLabel[urlType] || 'All') : 'All'
+    const t = searchParams.get('type')
+    return t ? (urlTypeToLabel[t] || 'All') : 'All'
   })
   const [maxPrice, setMaxPrice] = useState(250000)
   const [sort, setSort]         = useState('newest')
 
-  const fetchListings = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoadingData(true)
-    const { data } = await supabase
-      .from('listings')
-      .select('id, name, area, distance_tag, price, room_type, rooms_available, slug, listing_photos(photo_url, is_cover)')
-      .eq('status', 'active')
-      .gt('rooms_available', 0)
-      .order('created_at', { ascending: false })
+    const [{ data: { user } }, { data }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from('listings')
+        .select('id, name, area, distance_tag, price, room_type, rooms_available, slug, listing_photos(photo_url, is_cover)')
+        .eq('status', 'active')
+        .gt('rooms_available', 0)
+        .order('created_at', { ascending: false }),
+    ])
+    setIsLoggedIn(!!user)
     setAllListings(data || [])
     setLoadingData(false)
   }, [])
 
-  useEffect(() => { fetchListings() }, [fetchListings])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  // Refetch on tab focus
   useEffect(() => {
-    const onFocus = () => fetchListings()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setIsLoggedIn(!!session?.user)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const onFocus = () => fetchData()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [fetchListings])
+  }, [fetchData])
+
+  const handleCardClick = useCallback((e: React.MouseEvent) => {
+    if (!isLoggedIn) {
+      e.preventDefault()
+      setShowAuthModal(true)
+    }
+  }, [isLoggedIn])
 
   const filtered = useMemo(() => {
     let list = [...allListings]
-
     if (search.trim()) {
       const q = search.toLowerCase()
-      list = list.filter(l =>
-        l.name.toLowerCase().includes(q) || l.area.toLowerCase().includes(q)
-      )
+      list = list.filter(l => l.name.toLowerCase().includes(q) || l.area.toLowerCase().includes(q))
     }
-
-    if (roomType !== 'All') {
-      list = list.filter(l => l.room_type === roomTypeToDb[roomType])
-    }
-
+    if (roomType !== 'All') list = list.filter(l => l.room_type === roomTypeToDb[roomType])
     list = list.filter(l => l.price <= maxPrice)
-
     if (sort === 'price_asc')  list.sort((a, b) => a.price - b.price)
     if (sort === 'price_desc') list.sort((a, b) => b.price - a.price)
-
     return list
   }, [allListings, search, roomType, maxPrice, sort])
 
-  const resetFilters = () => {
-    setRoomType('All')
-    setMaxPrice(250000)
-    setSearch('')
-  }
+  const resetFilters = () => { setRoomType('All'); setMaxPrice(250000); setSearch('') }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
+
+      {showAuthModal && <AuthGateModal onClose={() => setShowAuthModal(false)} />}
 
       {/* Header */}
       <div style={{ backgroundColor: '#034338' }} className="px-4 sm:px-6 py-10">
@@ -135,13 +126,9 @@ function ListingsContent() {
             <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search by area or hostel name..."
-              className="flex-1 text-sm outline-none bg-transparent text-[#0A2A23] placeholder-gray-400"
-            />
+              className="flex-1 text-sm outline-none bg-transparent text-[#0A2A23] placeholder-gray-400" />
             {search && (
               <button onClick={() => setSearch('')} className="text-gray-400 hover:text-gray-600 cursor-pointer">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,7 +147,6 @@ function ListingsContent() {
           <aside className="hidden lg:block w-56 shrink-0">
             <div className="bg-white rounded-2xl p-5 sticky top-24 shadow-sm">
               <h2 className="font-black text-sm mb-5" style={{ color: '#0A2A23' }}>Filters</h2>
-
               <div className="mb-6">
                 <p className="text-xs font-bold mb-3" style={{ color: '#4B6B62' }}>ROOM TYPE</p>
                 <div className="flex flex-col gap-1.5">
@@ -173,7 +159,6 @@ function ListingsContent() {
                   ))}
                 </div>
               </div>
-
               <div className="mb-6">
                 <p className="text-xs font-bold mb-3" style={{ color: '#4B6B62' }}>MAX PRICE / YEAR</p>
                 <p className="text-lg font-black mb-3" style={{ color: '#034338' }}>₦{maxPrice.toLocaleString()}</p>
@@ -183,7 +168,6 @@ function ListingsContent() {
                   <span>₦40k</span><span>₦250k</span>
                 </div>
               </div>
-
               <button onClick={resetFilters}
                 className="w-full text-sm font-bold py-2 rounded-lg border transition-colors cursor-pointer hover:bg-gray-50"
                 style={{ color: '#034338', borderColor: '#E8EDEB' }}>
@@ -207,7 +191,6 @@ function ListingsContent() {
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#37D76A' }} />
                 )}
               </button>
-
               <select value={sort} onChange={e => setSort(e.target.value)}
                 className="ml-auto text-sm font-semibold px-4 py-2 rounded-xl bg-white shadow-sm outline-none cursor-pointer"
                 style={{ color: '#034338' }}>
@@ -244,7 +227,7 @@ function ListingsContent() {
               </div>
             )}
 
-            {/* Desktop room type pills */}
+            {/* Desktop pills */}
             <div className="hidden lg:flex flex-wrap gap-2 mb-6">
               {ROOM_TYPES.map(type => (
                 <button key={type} onClick={() => setRoomType(type)}
@@ -255,32 +238,42 @@ function ListingsContent() {
               ))}
             </div>
 
-            {/* Active filter indicator */}
+            {/* Active filter chips */}
             {(search || roomType !== 'All' || maxPrice < 250000) && !loadingData && (
               <div className="flex items-center gap-2 mb-4 flex-wrap">
-                <span className="text-xs font-bold" style={{ color: '#4B6B62' }}>Active filters:</span>
+                <span className="text-xs font-bold" style={{ color: '#4B6B62' }}>Active:</span>
                 {search && (
                   <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: '#E8F5EE', color: '#034338' }}>
-                    "{search}"
-                    <button onClick={() => setSearch('')} className="cursor-pointer ml-1">×</button>
+                    "{search}" <button onClick={() => setSearch('')} className="cursor-pointer">×</button>
                   </span>
                 )}
                 {roomType !== 'All' && (
                   <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: '#E8F5EE', color: '#034338' }}>
-                    {roomType}
-                    <button onClick={() => setRoomType('All')} className="cursor-pointer ml-1">×</button>
+                    {roomType} <button onClick={() => setRoomType('All')} className="cursor-pointer">×</button>
                   </span>
                 )}
                 {maxPrice < 250000 && (
                   <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: '#E8F5EE', color: '#034338' }}>
-                    Max ₦{maxPrice.toLocaleString()}
-                    <button onClick={() => setMaxPrice(250000)} className="cursor-pointer ml-1">×</button>
+                    Max ₦{maxPrice.toLocaleString()} <button onClick={() => setMaxPrice(250000)} className="cursor-pointer">×</button>
                   </span>
                 )}
               </div>
             )}
 
-            {/* Loading skeletons */}
+            {/* Auth nudge for logged-out users */}
+            {!isLoggedIn && !loadingData && allListings.length > 0 && (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 text-sm font-medium" style={{ backgroundColor: '#E8F5EE' }}>
+                <svg className="w-4 h-4 shrink-0" style={{ color: '#034338' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span style={{ color: '#034338' }}>
+                  <Link href="/register" className="font-bold underline">Create a free account</Link> or{' '}
+                  <Link href="/login" className="font-bold underline">log in</Link> to view hostel details and contact agents.
+                </span>
+              </div>
+            )}
+
+            {/* Loading */}
             {loadingData ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                 {[...Array(6)].map((_, i) => (
@@ -313,8 +306,12 @@ function ListingsContent() {
                   const label = roomTypeMap[listing.room_type] || listing.room_type
                   const badge = roomTypeBadge[label] || { bg: '#F4F6F5', text: '#4B6B62' }
                   return (
-                    <Link href={`/listings/${listing.slug}`} key={listing.id}
-                      className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                    <Link
+                      href={`/listings/${listing.slug}`}
+                      key={listing.id}
+                      onClick={handleCardClick}
+                      className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                    >
                       <div className="h-44 relative overflow-hidden" style={{ backgroundColor: '#1a4a3a' }}>
                         {cover ? (
                           <img src={cover.photo_url} alt={listing.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -323,6 +320,13 @@ function ListingsContent() {
                             <svg className="w-20 h-20 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
                             </svg>
+                          </div>
+                        )}
+                        {!isLoggedIn && (
+                          <div className="absolute inset-0 flex items-end justify-center pb-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(3,67,56,0.9)', color: '#37D76A' }}>
+                              Sign in to view details
+                            </span>
                           </div>
                         )}
                         <div className="absolute top-3 left-3">
@@ -339,9 +343,7 @@ function ListingsContent() {
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h3 className="font-bold text-base leading-snug" style={{ color: '#0A2A23' }}>{listing.name}</h3>
-                          <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>
-                            {label}
-                          </span>
+                          <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>{label}</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#4B6B62' }}>
                           <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -377,10 +379,8 @@ function ListingsContent() {
 export default function ListingsPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
-        </div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F4F6F5' }}>
+        <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
       </div>
     }>
       <ListingsContent />
