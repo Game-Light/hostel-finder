@@ -9,17 +9,20 @@ import { supabase } from '@/lib/supabase'
 type Role = 'student' | 'agent'
 type Step = 'role' | 'details'
 
+const AGENT_INVITE_CODE = process.env.NEXT_PUBLIC_AGENT_INVITE_CODE || 'FUOYE2026'
+
 export default function RegisterPage() {
   const router = useRouter()
-  const [step, setStep] = useState<Step>('role')
-  const [role, setRole] = useState<Role>('student')
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [password, setPassword] = useState('')
+  const [step, setStep]             = useState<Step>('role')
+  const [role, setRole]             = useState<Role>('student')
+  const [fullName, setFullName]     = useState('')
+  const [email, setEmail]           = useState('')
+  const [phone, setPhone]           = useState('')
+  const [password, setPassword]     = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState('')
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,9 +33,15 @@ export default function RegisterPage() {
       return
     }
 
-    if (role === 'agent' && !phone.trim()) {
-      setError('Phone number is required for agents.')
-      return
+    if (role === 'agent') {
+      if (!phone.trim()) {
+        setError('Phone number is required for agents.')
+        return
+      }
+      if (inviteCode.trim().toUpperCase() !== AGENT_INVITE_CODE.toUpperCase()) {
+        setError('Invalid invite code. Contact us on WhatsApp to get your agent code.')
+        return
+      }
     }
 
     setLoading(true)
@@ -56,18 +65,14 @@ export default function RegisterPage() {
       return
     }
 
-    // After successful signUp, replace the router.push lines with:
     router.push('/register/check-email')
   }
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: '#F4F6F5' }}>
 
-      {/* Left panel — branding (desktop only) */}
-      <div
-        className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 p-10"
-        style={{ backgroundColor: '#034338' }}
-      >
+      {/* Left panel */}
+      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 p-10" style={{ backgroundColor: '#034338' }}>
         <Link href="/">
           <Image src="/logo/Logo-horizontal.svg" alt="Hostel Finder" width={140} height={36} />
         </Link>
@@ -93,10 +98,9 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* Right panel — form */}
+      {/* Right panel */}
       <div className="flex-1 flex flex-col">
-        {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-4 border-b" style={{ borderColor: '#E8EDEB', backgroundColor: '#034338' }}>
+        <div className="lg:hidden flex items-center px-4 py-4 border-b" style={{ borderColor: '#E8EDEB', backgroundColor: '#034338' }}>
           <Link href="/">
             <Image src="/logo/Logo-horizontal.svg" alt="Hostel Finder" width={120} height={30} />
           </Link>
@@ -105,7 +109,7 @@ export default function RegisterPage() {
         <div className="flex-1 flex items-center justify-center px-4 py-10">
           <div className="w-full max-w-md">
 
-            {/* Step 1 — Choose role */}
+            {/* Step 1 — Role selection */}
             {step === 'role' && (
               <div>
                 <h1 className="text-2xl font-black mb-1" style={{ color: '#0A2A23' }}>Create your account</h1>
@@ -113,37 +117,25 @@ export default function RegisterPage() {
 
                 <div className="flex flex-col gap-4 mb-8">
                   {[
-                    {
-                      value: 'student' as Role,
-                      title: 'Student',
-                      desc: 'I want to find a hostel near FUOYE',
-                      icon: '🎓',
-                    },
-                    {
-                      value: 'agent' as Role,
-                      title: 'Hostel Agent / Landlord',
-                      desc: 'I want to list my hostel and reach students',
-                      icon: '🏠',
-                    },
+                    { value: 'student' as Role, title: 'Student', desc: 'I want to find a hostel near FUOYE', icon: '🎓' },
+                    { value: 'agent' as Role, title: 'Hostel Agent / Landlord', desc: 'I want to list my hostel and reach students', icon: '🏠' },
                   ].map(option => (
                     <button
                       key={option.value}
                       onClick={() => setRole(option.value)}
-                      className="flex items-center gap-4 p-5 rounded-2xl border-2 text-left transition-all"
+                      className="flex items-center gap-4 p-5 rounded-2xl border-2 text-left transition-all cursor-pointer"
                       style={{
                         borderColor: role === option.value ? '#034338' : '#E8EDEB',
                         backgroundColor: role === option.value ? '#F0FAF4' : '#FFFFFF',
                       }}
                     >
                       <span className="text-2xl">{option.icon}</span>
-                      <div>
+                      <div className="flex-1">
                         <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>{option.title}</p>
                         <p className="text-xs font-medium mt-0.5" style={{ color: '#4B6B62' }}>{option.desc}</p>
                       </div>
-                      <div
-                        className="ml-auto w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
-                        style={{ borderColor: role === option.value ? '#034338' : '#D1D5DB' }}
-                      >
+                      <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
+                        style={{ borderColor: role === option.value ? '#034338' : '#D1D5DB' }}>
                         {role === option.value && (
                           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#034338' }} />
                         )}
@@ -152,9 +144,24 @@ export default function RegisterPage() {
                   ))}
                 </div>
 
+                {role === 'agent' && (
+                  <div className="flex items-start gap-3 px-4 py-3 rounded-xl mb-6" style={{ backgroundColor: '#E8F5EE' }}>
+                    <span className="text-base mt-0.5">ℹ️</span>
+                    <p className="text-xs font-medium leading-relaxed" style={{ color: '#3D6058' }}>
+                      Agent accounts require an invite code.{' '}
+                      <a href="https://wa.me/2349122781346?text=Hi, I want to list my hostel on Hostel Finder. Can I get the agent code?"
+                        target="_blank" rel="noopener noreferrer"
+                        className="font-bold hover:underline" style={{ color: '#034338' }}>
+                        Contact us on WhatsApp
+                      </a>{' '}
+                      to get yours.
+                    </p>
+                  </div>
+                )}
+
                 <button
                   onClick={() => setStep('details')}
-                  className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-opacity hover:opacity-90"
+                  className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-opacity hover:opacity-90 cursor-pointer"
                   style={{ backgroundColor: '#034338' }}
                 >
                   Continue as {role === 'student' ? 'Student' : 'Agent'} →
@@ -162,21 +169,17 @@ export default function RegisterPage() {
 
                 <p className="text-center text-sm font-medium mt-6" style={{ color: '#4B6B62' }}>
                   Already have an account?{' '}
-                  <Link href="/login" className="font-bold hover:underline" style={{ color: '#034338' }}>
-                    Log in
-                  </Link>
+                  <Link href="/login" className="font-bold hover:underline" style={{ color: '#034338' }}>Log in</Link>
                 </p>
               </div>
             )}
 
-            {/* Step 2 — Fill details */}
+            {/* Step 2 — Details */}
             {step === 'details' && (
               <div>
-                <button
-                  onClick={() => setStep('role')}
-                  className="flex items-center gap-1.5 text-sm font-semibold mb-6 hover:underline"
-                  style={{ color: '#4B6B62' }}
-                >
+                <button onClick={() => setStep('role')}
+                  className="flex items-center gap-1.5 text-sm font-semibold mb-6 hover:underline cursor-pointer"
+                  style={{ color: '#4B6B62' }}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
@@ -186,9 +189,7 @@ export default function RegisterPage() {
                 <h1 className="text-2xl font-black mb-1" style={{ color: '#0A2A23' }}>
                   {role === 'student' ? 'Student' : 'Agent'} account
                 </h1>
-                <p className="text-sm font-medium mb-8" style={{ color: '#4B6B62' }}>
-                  Fill in your details to get started
-                </p>
+                <p className="text-sm font-medium mb-8" style={{ color: '#4B6B62' }}>Fill in your details to get started</p>
 
                 {error && (
                   <div className="mb-5 px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
@@ -197,85 +198,70 @@ export default function RegisterPage() {
                 )}
 
                 <form onSubmit={handleRegister} className="flex flex-col gap-4">
-                  {/* Full name */}
                   <div>
-                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                      Full name
-                    </label>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={e => setFullName(e.target.value)}
-                      placeholder="e.g. Enoch Light"
-                      required
+                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Full name</label>
+                    <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
+                      placeholder="e.g. Enoch Light" required
                       className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
                       style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
                       onFocus={e => e.target.style.borderColor = '#034338'}
-                      onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                    />
+                      onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
                   </div>
 
-                  {/* Email */}
                   <div>
-                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                      Email address
-                    </label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      required
+                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Email address</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                      placeholder="you@example.com" required
                       className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
                       style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
                       onFocus={e => e.target.style.borderColor = '#034338'}
-                      onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                    />
+                      onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
                   </div>
 
-                  {/* Phone (agents only) */}
                   {role === 'agent' && (
-                    <div>
-                      <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                        Phone / WhatsApp number
-                      </label>
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={e => setPhone(e.target.value)}
-                        placeholder="080XXXXXXXX"
-                        required
-                        className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                        style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
-                        onFocus={e => e.target.style.borderColor = '#034338'}
-                        onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Phone / WhatsApp number</label>
+                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                          placeholder="080XXXXXXXX" required
+                          className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                          style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
+                          onFocus={e => e.target.style.borderColor = '#034338'}
+                          onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Agent invite code</label>
+                        <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
+                          placeholder="Enter your invite code" required
+                          className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                          style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
+                          onFocus={e => e.target.style.borderColor = '#034338'}
+                          onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
+                        <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
+                          Don't have a code?{' '}
+                          <a href="https://wa.me/2349122781346?text=Hi, I want to list my hostel on Hostel Finder. Can I get the agent code?"
+                            target="_blank" rel="noopener noreferrer"
+                            className="font-bold hover:underline" style={{ color: '#034338' }}>
+                            Request one on WhatsApp
+                          </a>
+                        </p>
+                      </div>
+                    </>
                   )}
 
-                  {/* Password */}
                   <div>
-                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                      Password
-                    </label>
+                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Password</label>
                     <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        placeholder="Min. 6 characters"
-                        required
+                      <input type={showPassword ? 'text' : 'password'} value={password}
+                        onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" required
                         className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors pr-12"
                         style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
                         onFocus={e => e.target.style.borderColor = '#034338'}
-                        onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2"
-                        style={{ color: '#4B6B62' }}
-                      >
+                        onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer"
+                        style={{ color: '#4B6B62' }}>
                         {showPassword ? (
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
@@ -290,12 +276,9 @@ export default function RegisterPage() {
                     </div>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-opacity hover:opacity-90 mt-2 disabled:opacity-60"
-                    style={{ backgroundColor: '#034338' }}
-                  >
+                  <button type="submit" disabled={loading}
+                    className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-opacity hover:opacity-90 mt-2 disabled:opacity-60 cursor-pointer"
+                    style={{ backgroundColor: '#034338' }}>
                     {loading ? 'Creating account...' : 'Create account'}
                   </button>
                 </form>

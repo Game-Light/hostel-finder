@@ -17,7 +17,7 @@ export default function ContactPage() {
         <div className="max-w-3xl mx-auto text-center">
           <h1 className="text-3xl sm:text-4xl font-black text-white mb-4">Get in touch</h1>
           <p className="text-base font-medium" style={{ color: 'rgba(255,255,255,0.7)' }}>
-            Have a question, suggestion, or issue? We're here to help.
+            Have a question, suggestion, or issue? We are here to help.
           </p>
         </div>
       </div>
@@ -26,44 +26,52 @@ export default function ContactPage() {
 
         {/* Contact options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-          {[
-            {
-              icon: '💬',
-              title: 'WhatsApp',
-              desc: 'Fastest response. Message us directly.',
-              action: 'Chat on WhatsApp',
-              href: 'https://wa.me/2349122781346?text=Hi, I have a question about Hostel Finder.',
-              primary: true,
-            },
-            {
-              icon: '📧',
-              title: 'Email',
-              desc: 'For detailed enquiries and partnership requests.',
-              action: 'Send an email',
-              href: 'mailto:hello@hostelfinder.com.ng',
-              primary: false,
-            },
-          ].map(item => (
-            <div key={item.title} className="bg-white rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-              <span className="text-3xl">{item.icon}</span>
-              <div>
-                <h3 className="font-black text-base mb-1" style={{ color: '#0A2A23' }}>{item.title}</h3>
-                <p className="text-sm font-medium" style={{ color: '#4B6B62' }}>{item.desc}</p>
-              </div>
-              <a
-                href={item.href}
-                target={item.href.startsWith('http') ? '_blank' : undefined}
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center py-3 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 mt-auto"
-                style={item.primary
-                  ? { backgroundColor: '#37D76A', color: '#034338' }
-                  : { backgroundColor: '#034338', color: '#FFFFFF' }
-                }
-              >
-                {item.action}
-              </a>
+          <div className="bg-white rounded-2xl p-6 shadow-sm flex flex-col gap-4">
+            <span className="text-3xl">💬</span>
+            <div>
+              <h3 className="font-black text-base mb-1" style={{ color: '#0A2A23' }}>WhatsApp</h3>
+              <p className="text-sm font-medium" style={{ color: '#4B6B62' }}>
+                Fastest response. Message us directly.
+              </p>
             </div>
-          ))}
+            <a
+              href="https://wa.me/2349122781346?text=Hi, I have a question about Hostel Finder."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity mt-auto"
+              style={{ backgroundColor: '#37D76A', color: '#034338' }}
+            >
+              Chat on WhatsApp
+            </a>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm flex flex-col gap-4">
+            <span className="text-3xl">📧</span>
+            <div>
+              <h3 className="font-black text-base mb-1" style={{ color: '#0A2A23' }}>Email</h3>
+              <p className="text-sm font-medium" style={{ color: '#4B6B62' }}>
+                For detailed enquiries and partnerships.
+              </p>
+            </div>
+            <a
+              href="mailto:hello@hostelfinder.com.ng"
+              className="flex items-center justify-center py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity mt-auto"
+              style={{ backgroundColor: '#034338', color: '#FFFFFF' }}
+            >
+              Send an email
+            </a>
+          </div>
+        </div>
+
+        {/* Agent listing code note */}
+        <div className="rounded-2xl p-5 mb-8 flex items-start gap-3" style={{ backgroundColor: '#E8F5EE' }}>
+          <span className="text-xl mt-0.5">🏠</span>
+          <div>
+            <p className="text-sm font-bold mb-0.5" style={{ color: '#034338' }}>Want to list your hostel?</p>
+            <p className="text-sm font-medium" style={{ color: '#3D6058' }}>
+              Contact us on WhatsApp to get your agent invite code and start listing for free.
+            </p>
+          </div>
         </div>
 
         {/* FAQ */}
@@ -77,7 +85,7 @@ export default function ContactPage() {
               },
               {
                 q: 'How do I list my hostel?',
-                a: 'Create a free agent account, go to your dashboard, and click "Add new listing". Your listing goes live after a quick review.',
+                a: 'Contact us on WhatsApp to get your agent invite code. Then create an agent account, go to your dashboard, and click "Add new listing".',
               },
               {
                 q: 'How long does listing approval take?',
@@ -89,7 +97,7 @@ export default function ContactPage() {
               },
               {
                 q: 'I found a fraudulent listing. How do I report it?',
-                a: 'Contact us on WhatsApp or email with the listing name and the issue. We take fraud reports seriously and act fast.',
+                a: 'Contact us on WhatsApp with the listing name and the issue. We take fraud reports seriously and act fast.',
               },
             ].map(item => (
               <div key={item.q} className="border-b pb-5 last:border-0 last:pb-0" style={{ borderColor: '#E8EDEB' }}>
@@ -100,16 +108,18 @@ export default function ContactPage() {
           </div>
         </div>
 
-        {/* For agents */}
+        {/* CTA */}
         <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: '#034338' }}>
-          <h2 className="text-lg font-black text-white mb-2">Want to list your hostel?</h2>
+          <h2 className="text-lg font-black text-white mb-2">Ready to find your hostel?</h2>
           <p className="text-sm font-medium mb-6" style={{ color: 'rgba(255,255,255,0.7)' }}>
-            Join agents already reaching FUOYE students on Hostel Finder.
+            Browse verified hostels near FUOYE for free.
           </p>
-          <Link href="/register"
+          <Link
+            href="/listings"
             className="inline-flex items-center gap-2 font-bold text-sm px-6 py-3 rounded-full hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#37D76A', color: '#034338' }}>
-            Create agent account →
+            style={{ backgroundColor: '#37D76A', color: '#034338' }}
+          >
+            Browse hostels
           </Link>
         </div>
       </div>
@@ -119,11 +129,21 @@ export default function ContactPage() {
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           <div>
             <Image src="/logo/Logo-horizontal.svg" alt="Hostel Finder" width={120} height={32} />
-            <p className="text-xs mt-2 font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>© 2026 Hostel Finder. All rights reserved.</p>
+            <p className="text-xs mt-2 font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              © 2026 Hostel Finder. All rights reserved.
+            </p>
           </div>
           <div className="flex items-center gap-6 text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>
-            {[{ label: 'Browse', href: '/listings' }, { label: 'About', href: '/about' }, { label: 'Contact', href: '/contact' }, { label: 'Privacy', href: '/privacy' }].map(link => (
-              <Link key={link.href} href={link.href} className="hover:text-white transition-colors">{link.label}</Link>
+            {[
+              { label: 'Browse', href: '/listings' },
+              { label: 'List a hostel', href: '/register' },
+              { label: 'About', href: '/about' },
+              { label: 'Contact', href: '/contact' },
+              { label: 'Privacy', href: '/privacy' },
+            ].map(link => (
+              <Link key={link.href} href={link.href} className="hover:text-white transition-colors">
+                {link.label}
+              </Link>
             ))}
           </div>
         </div>

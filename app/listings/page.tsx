@@ -53,7 +53,7 @@ function ListingsContent() {
     const t = searchParams.get('type')
     return t ? (urlTypeToLabel[t] || 'All') : 'All'
   })
-  const [maxPrice, setMaxPrice] = useState(250000)
+  const [maxPrice, setMaxPrice] = useState(1000000)
   const [sort, setSort]         = useState('newest')
 
   const fetchData = useCallback(async () => {
@@ -107,7 +107,7 @@ function ListingsContent() {
     return list
   }, [allListings, search, roomType, maxPrice, sort])
 
-  const resetFilters = () => { setRoomType('All'); setMaxPrice(250000); setSearch('') }
+  const resetFilters = () => { setRoomType('All'); setMaxPrice(1000000); setSearch('') }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
@@ -162,10 +162,10 @@ function ListingsContent() {
               <div className="mb-6">
                 <p className="text-xs font-bold mb-3" style={{ color: '#4B6B62' }}>MAX PRICE / YEAR</p>
                 <p className="text-lg font-black mb-3" style={{ color: '#034338' }}>₦{maxPrice.toLocaleString()}</p>
-                <input type="range" min={40000} max={250000} step={5000} value={maxPrice}
+                <input type="range" min={40000} max={1000000} step={5000} value={maxPrice}
                   onChange={e => setMaxPrice(Number(e.target.value))} className="w-full accent-[#37D76A] cursor-pointer" />
                 <div className="flex justify-between text-xs mt-1" style={{ color: '#4B6B62' }}>
-                  <span>₦40k</span><span>₦250k</span>
+                  <span>₦40k</span><span>₦1M</span>
                 </div>
               </div>
               <button onClick={resetFilters}
@@ -187,7 +187,7 @@ function ListingsContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 010 2H4a1 1 0 01-1-1zM6 10h12M9 16h6" />
                 </svg>
                 Filters
-                {(roomType !== 'All' || maxPrice < 250000) && (
+                {(roomType !== 'All' || maxPrice < 1000000) && (
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#37D76A' }} />
                 )}
               </button>
@@ -220,7 +220,7 @@ function ListingsContent() {
                   ))}
                 </div>
                 <p className="text-xs font-bold mb-2" style={{ color: '#4B6B62' }}>MAX PRICE: ₦{maxPrice.toLocaleString()}/yr</p>
-                <input type="range" min={40000} max={250000} step={5000} value={maxPrice}
+                <input type="range" min={40000} max={1000000} step={5000} value={maxPrice}
                   onChange={e => setMaxPrice(Number(e.target.value))} className="w-full accent-[#37D76A] cursor-pointer" />
                 <button onClick={resetFilters} className="mt-4 w-full text-sm font-bold py-2 rounded-lg border cursor-pointer"
                   style={{ color: '#034338', borderColor: '#E8EDEB' }}>Reset filters</button>
@@ -239,7 +239,7 @@ function ListingsContent() {
             </div>
 
             {/* Active filter chips */}
-            {(search || roomType !== 'All' || maxPrice < 250000) && !loadingData && (
+            {(search || roomType !== 'All' || maxPrice < 1000000) && !loadingData && (
               <div className="flex items-center gap-2 mb-4 flex-wrap">
                 <span className="text-xs font-bold" style={{ color: '#4B6B62' }}>Active:</span>
                 {search && (
@@ -252,9 +252,9 @@ function ListingsContent() {
                     {roomType} <button onClick={() => setRoomType('All')} className="cursor-pointer">×</button>
                   </span>
                 )}
-                {maxPrice < 250000 && (
+                {maxPrice < 1000000 && (
                   <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: '#E8F5EE', color: '#034338' }}>
-                    Max ₦{maxPrice.toLocaleString()} <button onClick={() => setMaxPrice(250000)} className="cursor-pointer">×</button>
+                    Max ₦{maxPrice.toLocaleString()} <button onClick={() => setMaxPrice(1000000)} className="cursor-pointer">×</button>
                   </span>
                 )}
               </div>
