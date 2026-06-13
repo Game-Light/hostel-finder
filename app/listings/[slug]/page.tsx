@@ -13,6 +13,7 @@ interface ListingDetail {
   distance_tag: string; price: number; room_type: string
   rooms_available: number; facilities: string[]; whatsapp_number: string
   video_url: string | null; slug: string; views: number; address: string | null
+  status: string
   listing_photos: Photo[]
   users: { full_name: string; phone: string | null }
 }
@@ -53,7 +54,7 @@ export default function HostelDetailPage() {
       .from('listings')
       .select('*, listing_photos(photo_url, is_cover, sort_order), users(full_name, phone)')
       .eq('slug', slug)
-      .eq('status', 'active')
+
       .single()
 
     if (!data) { setNotFound(true); setLoading(false); return }
@@ -277,6 +278,13 @@ export default function HostelDetailPage() {
               )}
             </div>
 
+            {/* Pending/inactive banner */}
+            {listing.status !== 'active' && (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4 text-sm font-medium" style={{ backgroundColor: listing.status === 'pending' ? '#FEF3C7' : '#F3F4F6', color: listing.status === 'pending' ? '#92400E' : '#6B7280' }}>
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                {listing.status === 'pending' ? 'This listing is pending review and not yet visible to students.' : 'This listing is inactive and not visible to students.'}
+              </div>
+            )}
             {/* Hostel info */}
             <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -289,11 +297,6 @@ export default function HostelDetailPage() {
                     </svg>
                     {listing.area} · {listing.distance_tag} to FUOYE main gate
                   </div>
-                  {listing.address && (
-                    <p className="text-xs font-medium pl-5 mt-0.5" style={{ color: '#4B6B62' }}>
-                      📍 {listing.address}
-                    </p>
-                  )}
                 </div>
                 <span className="text-sm font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>{label}</span>
               </div>
@@ -424,7 +427,7 @@ export default function HostelDetailPage() {
             <p className="text-xs mt-2 font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>© 2026 Hostel Finder. All rights reserved.</p>
           </div>
           <div className="flex items-center gap-6 text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>
-            {[{ label: 'Browse', href: '/listings' }, { label: 'About', href: '/about' }, { label: 'Contact', href: '/contact' }, { label: 'Privacy', href: '/privacy' }].map(link => (
+            {[{ label: 'Browse', href: '/listings' }, { label: 'List a hostel', href: '/register' }, { label: 'About', href: '/about' }, { label: 'Contact', href: '/contact' }].map(link => (
               <Link key={link.href} href={link.href} className="hover:text-white transition-colors">{link.label}</Link>
             ))}
           </div>
