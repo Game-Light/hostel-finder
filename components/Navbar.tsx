@@ -11,6 +11,8 @@ interface UserProfile {
   role: string
 }
 
+const CACHE_KEY = 'hf_user_profile'
+
 export default function Navbar() {
   const router = useRouter()
   const [profile, setProfile]   = useState<UserProfile | null>(null)
@@ -18,8 +20,18 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
-    // getSession reads from local storage — instant, no network call
     const init = async () => {
+      // Check sessionStorage cache first — instant, no network call
+      try {
+        const cached = sessionStorage.getItem(CACHE_KEY)
+        if (cached) {
+          setProfile(JSON.parse(cached))
+          setLoading(false)
+          return
+        }
+      } catch {}
+
+      // No cache — fetch from Supabase
       const { data: { session } } = await supabase.auth.getSession()
 
       if (session?.user) {
@@ -28,27 +40,37 @@ export default function Navbar() {
           .select('full_name, role')
           .eq('id', session.user.id)
           .single()
-        if (data) setProfile(data)
+        if (data) {
+          setProfile(data)
+          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch {}
+        }
       }
       setLoading(false)
     }
 
     init()
 
-    // Listen for auth changes
+    // Listen for auth changes (login, logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
+      if (event === 'SIGNED_OUT') {
+        try { sessionStorage.removeItem(CACHE_KEY) } catch {}
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+
+      if (event === 'SIGNED_IN' && session?.user) {
         const { data } = await supabase
           .from('users')
           .select('full_name, role')
           .eq('id', session.user.id)
           .single()
-        if (data) setProfile(data)
-        else setProfile(null)
-      } else {
-        setProfile(null)
+        if (data) {
+          setProfile(data)
+          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch {}
+        }
+        setLoading(false)
       }
-      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
@@ -56,6 +78,7 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+    try { sessionStorage.removeItem(CACHE_KEY) } catch {}
     setProfile(null)
     setMenuOpen(false)
     router.push('/')
@@ -145,7 +168,8 @@ export default function Navbar() {
             </div>
           ) : (
             <>
-              <Link href="/login" style={{ color: '#FFFFFF' }} className="text-sm font-medium px-3 py-2 hover:text-[#37D76A] transition-colors">
+              <Link href="/login" style={{ color: '#FFFFFF' }}
+                className="text-sm font-medium px-3 py-2 hover:text-[#37D76A] transition-colors">
                 Log in
               </Link>
               <Link href="/register" style={{ backgroundColor: '#37D76A' }}

@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
 
 interface Listing {
   id: string
@@ -30,30 +29,29 @@ const roomTypeLabel: Record<string, string> = {
 }
 
 export default function AdminPage() {
-  const [authed, setAuthed]           = useState(false)
-  const [password, setPassword]       = useState('')
+  const [authed, setAuthed]             = useState(false)
+  const [adminPassword, setAdminPassword] = useState('')
   const [passwordError, setPasswordError] = useState('')
-  const [verifying, setVerifying]     = useState(false)
+  const [verifying, setVerifying]       = useState(false)
 
-  const [tab, setTab]                 = useState<'listings' | 'users'>('listings')
-  const [listings, setListings]       = useState<Listing[]>([])
-  const [users, setUsers]             = useState<User[]>([])
-  const [loading, setLoading]         = useState(false)
-  const [actionId, setActionId]       = useState<string | null>(null)
+  const [tab, setTab]                   = useState<'listings' | 'users'>('listings')
+  const [listings, setListings]         = useState<Listing[]>([])
+  const [users, setUsers]               = useState<User[]>([])
+  const [loading, setLoading]           = useState(false)
+  const [actionId, setActionId]         = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<'pending' | 'active' | 'inactive' | 'all'>('pending')
 
+  // Verify password via server-side API
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setVerifying(true)
     setPasswordError('')
-
     try {
       const res = await fetch('/api/admin/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: adminPassword }),
       })
-
       if (res.ok) {
         setAuthed(true)
       } else {
@@ -62,50 +60,55 @@ export default function AdminPage() {
     } catch {
       setPasswordError('Something went wrong. Try again.')
     }
-
     setVerifying(false)
   }
 
-  const fetchData = async () => {
+  // Fetch all data via server-side API (bypasses RLS)
+  const fetchData = useCallback(async () => {
     setLoading(true)
-    const [{ data: listingData }, { data: userData }] = await Promise.all([
-      supabase
-        .from('listings')
-        .select('id, name, area, price, room_type, status, created_at, slug, users(full_name, email)')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('users')
-        .select('id, full_name, email, role, created_at')
-        .order('created_at', { ascending: false }),
-    ])
-    setListings((listingData || []) as unknown as Listing[])
-    setUsers(userData || [])
+    try {
+      const res = await fetch('/api/admin/data', {
+        headers: { 'x-admin-auth': adminPassword },
+      })
+      if (res.ok) {
+        const { listings: l, users: u } = await res.json()
+        setListings(l)
+        setUsers(u)
+      }
+    } catch {}
     setLoading(false)
-  }
+  }, [adminPassword])
 
   useEffect(() => {
-    if (!authed) return
-    fetchData()
-  }, [authed])
+    if (authed) fetchData()
+  }, [authed, fetchData])
 
-  const handleApprove = async (id: string) => {
+  // Actions via server-side API
+  const updateListingStatus = async (id: string, status: string) => {
     setActionId(id)
-    await supabase.from('listings').update({ status: 'active' }).eq('id', id)
-    setListings(prev => prev.map(l => l.id === id ? { ...l, status: 'active' } : l))
+    await fetch('/api/admin/data', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-auth': adminPassword,
+      },
+      body: JSON.stringify({ id, status }),
+    })
+    setListings(prev => prev.map(l => l.id === id ? { ...l, status } : l))
     setActionId(null)
   }
 
-  const handleDeactivate = async (id: string) => {
-    setActionId(id)
-    await supabase.from('listings').update({ status: 'inactive' }).eq('id', id)
-    setListings(prev => prev.map(l => l.id === id ? { ...l, status: 'inactive' } : l))
-    setActionId(null)
-  }
-
-  const handleDelete = async (id: string) => {
+  const deleteListing = async (id: string) => {
     if (!confirm('Permanently delete this listing?')) return
     setActionId(id)
-    await supabase.from('listings').delete().eq('id', id)
+    await fetch('/api/admin/data', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-auth': adminPassword,
+      },
+      body: JSON.stringify({ id }),
+    })
     setListings(prev => prev.filter(l => l.id !== id))
     setActionId(null)
   }
@@ -143,7 +146,7 @@ export default function AdminPage() {
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div>
               <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Password</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              <input type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)}
                 placeholder="Enter admin password" required autoFocus
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
                 style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
@@ -218,7 +221,7 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* ── Listings tab ── */}
+        {/* ── Listings ── */}
         {tab === 'listings' && (
           <div>
             <div className="flex gap-2 mb-4 flex-wrap">
@@ -235,7 +238,8 @@ export default function AdminPage() {
 
             {loading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
+                <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin"
+                  style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
               </div>
             ) : filteredListings.length === 0 ? (
               <div className="bg-white rounded-2xl p-10 text-center shadow-sm">
@@ -263,7 +267,7 @@ export default function AdminPage() {
                           {listing.area} · {roomTypeLabel[listing.room_type] || listing.room_type} · ₦{listing.price.toLocaleString()}/yr
                         </p>
                         <p className="text-xs font-medium mt-0.5" style={{ color: '#4B6B62' }}>
-                          By {listing.users?.full_name || 'Unknown'} ({listing.users?.email || 'No email'})
+                          By {listing.users?.full_name || 'Unknown'} ({listing.users?.email || '—'})
                         </p>
                         <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
                           {new Date(listing.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -278,7 +282,8 @@ export default function AdminPage() {
                         </Link>
 
                         {listing.status !== 'active' && (
-                          <button onClick={() => handleApprove(listing.id)} disabled={actionId === listing.id}
+                          <button onClick={() => updateListingStatus(listing.id, 'active')}
+                            disabled={actionId === listing.id}
                             className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-1.5"
                             style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>
                             {actionId === listing.id ? (
@@ -291,14 +296,16 @@ export default function AdminPage() {
                         )}
 
                         {listing.status === 'active' && (
-                          <button onClick={() => handleDeactivate(listing.id)} disabled={actionId === listing.id}
+                          <button onClick={() => updateListingStatus(listing.id, 'inactive')}
+                            disabled={actionId === listing.id}
                             className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50"
                             style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
                             Deactivate
                           </button>
                         )}
 
-                        <button onClick={() => handleDelete(listing.id)} disabled={actionId === listing.id}
+                        <button onClick={() => deleteListing(listing.id)}
+                          disabled={actionId === listing.id}
                           className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:bg-red-50 transition-colors border disabled:opacity-50"
                           style={{ color: '#DC2626', borderColor: '#E8EDEB' }}>
                           Delete
@@ -312,12 +319,13 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── Users tab ── */}
+        {/* ── Users ── */}
         {tab === 'users' && (
           <div>
             {loading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
+                <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin"
+                  style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
               </div>
             ) : (
               <div className="flex flex-col gap-3">
