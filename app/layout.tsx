@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Hostel Finder',
     description: 'Find student hostels near FUOYE',
-    images: ['/og-image_4x-8.png'],
+    images: ['/logo/og-image.png'],
     type: 'website',
   },
   icons: {

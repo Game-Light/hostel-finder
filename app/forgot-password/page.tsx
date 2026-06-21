@@ -12,26 +12,23 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  setError('')
-  setLoading(true)
+    e.preventDefault()
+    setError('')
+    setLoading(true)
 
-  const res = await fetch('/api/send-reset-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  })
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
 
-  const data = await res.json()
-  setLoading(false)
+    setLoading(false)
 
-  if (!res.ok) {
-    setError(data.error || 'Something went wrong. Please try again.')
-    return
+    if (resetError) {
+      setError(resetError.message)
+      return
+    }
+
+    setSent(true)
   }
-
-  setSent(true)
-}
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F4F6F5' }}>
