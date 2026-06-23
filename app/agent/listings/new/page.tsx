@@ -29,6 +29,12 @@ const FUOYE_AREAS = [
   'Ikole Road', 'New Site', 'Other',
 ]
 
+const RENT_DURATIONS = [
+  { value: '12', label: '12 months (1 year)' },
+  { value: '6',  label: '6 months' },
+  { value: 'other', label: 'Other' },
+]
+
 function generateSlug(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
   const suffix = Math.random().toString(36).slice(2, 6)
@@ -40,14 +46,13 @@ export default function NewListingPage() {
   const photoInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
 
-  // Auth check
   const [agentId, setAgentId] = useState<string | null>(null)
-  const [agentPhone, setAgentPhone] = useState('')
 
-  // Form fields
   const [name, setName]               = useState('')
   const [description, setDescription] = useState('')
   const [price, setPrice]             = useState('')
+  const [rentDuration, setRentDuration] = useState('12')
+  const [customDuration, setCustomDuration] = useState('')
   const [roomType, setRoomType]       = useState('self_contain')
   const [rooms, setRooms]             = useState('1')
   const [area, setArea]               = useState('Oye Town')
@@ -57,13 +62,11 @@ export default function NewListingPage() {
   const [whatsapp, setWhatsapp]       = useState('')
   const [address, setAddress]         = useState('')
 
-  // Media
   const [photos, setPhotos]           = useState<File[]>([])
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([])
   const [video, setVideo]             = useState<File | null>(null)
   const [videoPreview, setVideoPreview] = useState<string | null>(null)
 
-  // State
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
   const [uploadProgress, setUploadProgress] = useState('')
@@ -87,15 +90,12 @@ export default function NewListingPage() {
     init()
   }, [router])
 
-  // Photo selection
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const remaining = 6 - photos.length
     const toAdd = files.slice(0, remaining)
 
-    const newPhotos = [...photos, ...toAdd]
-    setPhotos(newPhotos)
-
+    setPhotos(prev => [...prev, ...toAdd])
     toAdd.forEach(file => {
       const reader = new FileReader()
       reader.onload = ev => {
@@ -103,8 +103,6 @@ export default function NewListingPage() {
       }
       reader.readAsDataURL(file)
     })
-
-    // Reset input so same file can be re-selected
     e.target.value = ''
   }
 
@@ -113,7 +111,6 @@ export default function NewListingPage() {
     setPhotoPreviews(prev => prev.filter((_, i) => i !== index))
   }
 
-  // Video selection
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -127,14 +124,12 @@ export default function NewListingPage() {
     setVideoPreview(null)
   }
 
-  // Facilities toggle
   const toggleFacility = (f: string) => {
     setFacilities(prev =>
       prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]
     )
   }
 
-  // Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -144,15 +139,19 @@ export default function NewListingPage() {
       return
     }
 
-    if (!agentId) return
+    if (rentDuration === 'other' && !customDuration.trim()) {
+      setError('Please specify the rent duration.')
+      return
+    }
 
+    if (!agentId) return
     setLoading(true)
 
     try {
       const slug = generateSlug(name)
       const finalArea = area === 'Other' ? customArea : area
+      const finalDuration = rentDuration === 'other' ? customDuration.trim() : rentDuration
 
-      // 1. Upload photos
       setUploadProgress('Uploading photos...')
       const photoUrls: string[] = []
 
@@ -174,7 +173,6 @@ export default function NewListingPage() {
         photoUrls.push(publicUrl)
       }
 
-      // 2. Upload video (if any)
       let videoUrl: string | null = null
 
       if (video) {
@@ -195,7 +193,6 @@ export default function NewListingPage() {
         videoUrl = publicUrl
       }
 
-      // 3. Insert listing
       setUploadProgress('Saving listing...')
 
       const { data: listing, error: insertError } = await supabase
@@ -205,6 +202,7 @@ export default function NewListingPage() {
           name,
           description,
           price:           parseInt(price),
+          rent_duration:   finalDuration,
           room_type:       roomType,
           rooms_available: parseInt(rooms),
           area:            finalArea,
@@ -221,7 +219,6 @@ export default function NewListingPage() {
 
       if (insertError) throw new Error(insertError.message)
 
-      // 4. Insert photos
       const photoRecords = photoUrls.map((url, i) => ({
         listing_id: listing.id,
         photo_url:  url,
@@ -244,7 +241,6 @@ export default function NewListingPage() {
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
 
-      {/* Page header */}
       <div style={{ backgroundColor: '#034338' }} className="px-4 sm:px-6 py-10">
         <div className="max-w-2xl mx-auto">
           <button
@@ -278,7 +274,6 @@ export default function NewListingPage() {
             <h2 className="text-base font-black mb-5" style={{ color: '#0A2A23' }}>Basic information</h2>
 
             <div className="flex flex-col gap-4">
-              {/* Name */}
               <div>
                 <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
                   Hostel name <span style={{ color: '#DC2626' }}>*</span>
@@ -296,7 +291,6 @@ export default function NewListingPage() {
                 />
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
                   Description <span style={{ color: '#DC2626' }}>*</span>
@@ -314,11 +308,11 @@ export default function NewListingPage() {
                 />
               </div>
 
-              {/* Price + Room type */}
+              {/* Price + Rent duration */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                    Price per room / year (₦) <span style={{ color: '#DC2626' }}>*</span>
+                    Price per room (₦) <span style={{ color: '#DC2626' }}>*</span>
                   </label>
                   <input
                     type="number"
@@ -333,6 +327,46 @@ export default function NewListingPage() {
                     onBlur={e => e.target.style.borderColor = '#E8EDEB'}
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                    Rent duration <span style={{ color: '#DC2626' }}>*</span>
+                  </label>
+                  <select
+                    value={rentDuration}
+                    onChange={e => setRentDuration(e.target.value)}
+                    required
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors cursor-pointer"
+                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                    onFocus={e => e.target.style.borderColor = '#034338'}
+                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
+                  >
+                    {RENT_DURATIONS.map(d => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {rentDuration === 'other' && (
+                <div>
+                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                    Specify duration <span style={{ color: '#DC2626' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={customDuration}
+                    onChange={e => setCustomDuration(e.target.value)}
+                    placeholder="e.g. 3 months, per semester"
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                    onFocus={e => e.target.style.borderColor = '#034338'}
+                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
+                  />
+                </div>
+              )}
+
+              {/* Room type + Rooms available */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
                     Room type <span style={{ color: '#DC2626' }}>*</span>
@@ -351,28 +385,26 @@ export default function NewListingPage() {
                     ))}
                   </select>
                 </div>
-              </div>
-
-              {/* Rooms available */}
-              <div>
-                <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                  Rooms currently available <span style={{ color: '#DC2626' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  value={rooms}
-                  onChange={e => setRooms(e.target.value)}
-                  min={0}
-                  max={100}
-                  required
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                  onFocus={e => e.target.style.borderColor = '#034338'}
-                  onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                />
-                <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
-                  Set to 0 to mark the hostel as fully occupied (no vacancy).
-                </p>
+                <div>
+                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                    Rooms available <span style={{ color: '#DC2626' }}>*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={rooms}
+                    onChange={e => setRooms(e.target.value)}
+                    min={0}
+                    max={100}
+                    required
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                    onFocus={e => e.target.style.borderColor = '#034338'}
+                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
+                  />
+                  <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
+                    Set to 0 to mark as fully occupied.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -497,12 +529,16 @@ export default function NewListingPage() {
 
           {/* ── Section 4: Photos ── */}
           <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>Photos</h2>
+            <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>
+              Photos <span style={{ color: '#DC2626' }}>*</span>
+            </h2>
+            <p className="text-xs font-medium mb-1" style={{ color: '#4B6B62' }}>
+              Upload up to 6 photos. First photo is the cover. Max 5MB each (JPG, PNG, WebP).
+            </p>
             <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>
-              Upload up to 6 photos. First photo is the cover. Min 1 required. Max 5MB each (JPG, PNG, WebP).
+              Include photos of: the building exterior, compound/environment, living area, kitchen, and bathroom.
             </p>
 
-            {/* Preview grid */}
             {photoPreviews.length > 0 && (
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {photoPreviews.map((src, i) => (
@@ -529,7 +565,6 @@ export default function NewListingPage() {
               </div>
             )}
 
-            {/* Upload button */}
             {photos.length < 6 && (
               <>
                 <input
@@ -544,17 +579,24 @@ export default function NewListingPage() {
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
                   className="w-full py-4 rounded-xl border-2 border-dashed text-sm font-semibold transition-colors hover:border-[#034338] hover:bg-[#F0FAF4]"
-                  style={{ borderColor: '#E8EDEB', color: '#4B6B62' }}
+                  style={{ borderColor: photos.length === 0 ? '#DC2626' : '#E8EDEB', color: '#4B6B62' }}
                 >
                   + Add photos ({photos.length}/6)
                 </button>
+                {photos.length === 0 && (
+                  <p className="text-xs font-medium mt-1.5" style={{ color: '#DC2626' }}>
+                    At least 1 photo is required.
+                  </p>
+                )}
               </>
             )}
           </div>
 
           {/* ── Section 5: Video ── */}
           <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>Video tour <span className="text-xs font-medium" style={{ color: '#4B6B62' }}>(optional)</span></h2>
+            <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>
+              Video tour <span className="text-xs font-medium" style={{ color: '#4B6B62' }}>(optional)</span>
+            </h2>
             <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>
               Upload one short video walkthrough. Max 50MB (MP4, WebM, MOV).
             </p>
@@ -616,7 +658,6 @@ export default function NewListingPage() {
             </div>
           </div>
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
