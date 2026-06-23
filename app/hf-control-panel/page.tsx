@@ -21,6 +21,7 @@ interface User {
   email: string
   role: string
   created_at: string
+  is_suspended: boolean
 }
 
 const roomTypeLabel: Record<string, string> = {
@@ -29,19 +30,18 @@ const roomTypeLabel: Record<string, string> = {
 }
 
 export default function AdminPage() {
-  const [authed, setAuthed]             = useState(false)
+  const [authed, setAuthed]               = useState(false)
   const [adminPassword, setAdminPassword] = useState('')
   const [passwordError, setPasswordError] = useState('')
-  const [verifying, setVerifying]       = useState(false)
+  const [verifying, setVerifying]         = useState(false)
 
-  const [tab, setTab]                   = useState<'listings' | 'users'>('listings')
-  const [listings, setListings]         = useState<Listing[]>([])
-  const [users, setUsers]               = useState<User[]>([])
-  const [loading, setLoading]           = useState(false)
-  const [actionId, setActionId]         = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'active' | 'inactive' | 'all'>('pending')
+  const [tab, setTab]                     = useState<'listings' | 'users'>('listings')
+  const [listings, setListings]           = useState<Listing[]>([])
+  const [users, setUsers]                 = useState<User[]>([])
+  const [loading, setLoading]             = useState(false)
+  const [actionId, setActionId]           = useState<string | null>(null)
+  const [statusFilter, setStatusFilter]   = useState<'pending' | 'active' | 'inactive' | 'all'>('pending')
 
-  // Verify password via server-side API
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setVerifying(true)
@@ -63,7 +63,6 @@ export default function AdminPage() {
     setVerifying(false)
   }
 
-  // Fetch all data via server-side API (bypasses RLS)
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
@@ -83,15 +82,11 @@ export default function AdminPage() {
     if (authed) fetchData()
   }, [authed, fetchData])
 
-  // Actions via server-side API
   const updateListingStatus = async (id: string, status: string) => {
     setActionId(id)
     await fetch('/api/admin/data', {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-auth': adminPassword,
-      },
+      headers: { 'Content-Type': 'application/json', 'x-admin-auth': adminPassword },
       body: JSON.stringify({ id, status }),
     })
     setListings(prev => prev.map(l => l.id === id ? { ...l, status } : l))
@@ -103,13 +98,35 @@ export default function AdminPage() {
     setActionId(id)
     await fetch('/api/admin/data', {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-auth': adminPassword,
-      },
+      headers: { 'Content-Type': 'application/json', 'x-admin-auth': adminPassword },
       body: JSON.stringify({ id }),
     })
     setListings(prev => prev.filter(l => l.id !== id))
+    setActionId(null)
+  }
+
+  const toggleSuspendUser = async (user: User) => {
+    const action = user.is_suspended ? 'unsuspend' : 'suspend'
+    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${user.full_name}?`)) return
+    setActionId(user.id)
+    await fetch('/api/admin/data', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-auth': adminPassword },
+      body: JSON.stringify({ type: 'user_suspend', id: user.id, is_suspended: !user.is_suspended }),
+    })
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_suspended: !u.is_suspended } : u))
+    setActionId(null)
+  }
+
+  const deleteUser = async (user: User) => {
+    if (!confirm(`Permanently delete ${user.full_name}'s account and all their listings? This cannot be undone.`)) return
+    setActionId(user.id)
+    await fetch('/api/admin/data', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'x-admin-auth': adminPassword },
+      body: JSON.stringify({ id: user.id, type: 'user' }),
+    })
+    setUsers(prev => prev.filter(u => u.id !== user.id))
     setActionId(null)
   }
 
@@ -122,7 +139,6 @@ export default function AdminPage() {
   const studentCount = users.filter(u => u.role === 'student').length
   const agentCount   = users.filter(u => u.role === 'agent').length
 
-  // ── Password gate ──
   if (!authed) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: '#F4F6F5' }}>
@@ -164,7 +180,6 @@ export default function AdminPage() {
     )
   }
 
-  // ── Admin dashboard ──
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <div style={{ backgroundColor: '#034338' }} className="px-4 sm:px-6 py-6">
@@ -188,7 +203,6 @@ export default function AdminPage() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
           {[
             { label: 'Pending listings', value: pendingCount, urgent: pendingCount > 0 },
@@ -205,7 +219,6 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-2 mb-6">
           {[
             { key: 'listings', label: `Listings${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` },
@@ -280,7 +293,6 @@ export default function AdminPage() {
                           style={{ color: '#034338', borderColor: '#E8EDEB' }}>
                           Preview
                         </Link>
-
                         {listing.status !== 'active' && (
                           <button onClick={() => updateListingStatus(listing.id, 'active')}
                             disabled={actionId === listing.id}
@@ -294,7 +306,6 @@ export default function AdminPage() {
                             ) : '✓'} Approve
                           </button>
                         )}
-
                         {listing.status === 'active' && (
                           <button onClick={() => updateListingStatus(listing.id, 'inactive')}
                             disabled={actionId === listing.id}
@@ -303,7 +314,6 @@ export default function AdminPage() {
                             Deactivate
                           </button>
                         )}
-
                         <button onClick={() => deleteListing(listing.id)}
                           disabled={actionId === listing.id}
                           className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:bg-red-50 transition-colors border disabled:opacity-50"
@@ -330,21 +340,32 @@ export default function AdminPage() {
             ) : (
               <div className="flex flex-col gap-3">
                 {users.map(user => (
-                  <div key={user.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div key={user.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shrink-0"
                         style={{
-                          backgroundColor: user.role === 'agent' ? '#034338' : '#E8F5EE',
-                          color: user.role === 'agent' ? '#37D76A' : '#034338',
+                          backgroundColor: user.is_suspended ? '#FEE2E2' : user.role === 'agent' ? '#034338' : '#E8F5EE',
+                          color: user.is_suspended ? '#DC2626' : user.role === 'agent' ? '#37D76A' : '#034338',
                         }}>
                         {user.full_name?.charAt(0).toUpperCase() || '?'}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-bold text-sm truncate" style={{ color: '#0A2A23' }}>{user.full_name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>{user.full_name}</p>
+                          {user.is_suspended && (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                              style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                              Suspended
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs font-medium truncate" style={{ color: '#4B6B62' }}>{user.email}</p>
+                        <p className="text-xs font-medium mt-0.5" style={{ color: '#9CA3AF' }}>
+                          {new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
                       <span className="text-xs font-bold px-2.5 py-1 rounded-full capitalize"
                         style={{
                           backgroundColor: user.role === 'agent' ? '#034338' : '#E8F5EE',
@@ -352,9 +373,23 @@ export default function AdminPage() {
                         }}>
                         {user.role}
                       </span>
-                      <span className="text-xs font-medium" style={{ color: '#9CA3AF' }}>
-                        {new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </span>
+                      <button
+                        onClick={() => toggleSuspendUser(user)}
+                        disabled={actionId === user.id}
+                        className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50"
+                        style={{
+                          backgroundColor: user.is_suspended ? '#DCFCE7' : '#FEF3C7',
+                          color: user.is_suspended ? '#166534' : '#92400E',
+                        }}>
+                        {actionId === user.id ? '...' : user.is_suspended ? 'Unsuspend' : 'Suspend'}
+                      </button>
+                      <button
+                        onClick={() => deleteUser(user)}
+                        disabled={actionId === user.id}
+                        className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:bg-red-50 transition-colors border disabled:opacity-50"
+                        style={{ color: '#DC2626', borderColor: '#E8EDEB' }}>
+                        Delete
+                      </button>
                     </div>
                   </div>
                 ))}

@@ -65,7 +65,7 @@ export default function RegisterPage() {
       return
     }
 
-    router.push('/register/check-email')
+    router.push(role === 'agent' ? '/agent/dashboard' : '/listings')
   }
 
   return (

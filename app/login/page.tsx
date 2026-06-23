@@ -15,33 +15,40 @@ export default function LoginPage() {
   const [error, setError] = useState('')
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+  e.preventDefault()
+  setError('')
+  setLoading(true)
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+  const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (signInError) {
-      setLoading(false)
-      setError('Incorrect email or password. Please try again.')
-      return
-    }
-
-    // Fetch user role to redirect correctly
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', data.user.id)
-      .single()
-
+  if (signInError) {
+    setError('Incorrect email or password. Please try again.')
     setLoading(false)
-
-    if (profile?.role === 'agent') {
-      router.push('/agent/dashboard')
-    } else {
-      router.push('/listings')
-    }
+    return
   }
+
+  // Fetch role and suspension status in one query
+  const { data: profile } = await supabase
+    .from('users')
+    .select('role, is_suspended')
+    .eq('id', data.user.id)
+    .single()
+
+  if (profile?.is_suspended) {
+    await supabase.auth.signOut()
+    setError('Your account has been suspended. Contact us on WhatsApp.')
+    setLoading(false)
+    return
+  }
+
+  setLoading(false)
+
+  if (profile?.role === 'agent') {
+    router.push('/agent/dashboard')
+  } else {
+    router.push('/listings')
+  }
+}
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: '#F4F6F5' }}>

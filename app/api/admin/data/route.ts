@@ -12,7 +12,6 @@ function isAuthorized(req: NextRequest) {
   return req.headers.get('x-admin-auth') === process.env.ADMIN_PASSWORD
 }
 
-// GET — fetch all listings and users
 export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -27,40 +26,63 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false }),
     supabase
       .from('users')
-      .select('id, full_name, email, role, created_at')
+      .select('id, full_name, email, role, created_at, is_suspended')
       .order('created_at', { ascending: false }),
   ])
 
   return NextResponse.json({ listings: listings || [], users: users || [] })
 }
 
-// PATCH — update listing status
 export async function PATCH(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { id, status } = await req.json()
+  const body = await req.json()
   const supabase = getAdminClient()
 
-  const { error } = await supabase
-    .from('listings')
-    .update({ status })
-    .eq('id', id)
+  // Listing status update
+  if (body.type === 'listing' || body.status) {
+    const { error } = await supabase
+      .from('listings')
+      .update({ status: body.status })
+      .eq('id', body.id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+  // User suspend/unsuspend
+  if (body.type === 'user_suspend') {
+    const { error } = await supabase
+      .from('users')
+      .update({ is_suspended: body.is_suspended })
+      .eq('id', body.id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
 }
 
-// DELETE — delete a listing
 export async function DELETE(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { id } = await req.json()
+  const { id, type } = await req.json()
   const supabase = getAdminClient()
 
+  if (type === 'user') {
+    // Delete user's listings first, then the user
+    await supabase.from('listings').delete().eq('agent_id', id)
+    const { error } = await supabase.auth.admin.deleteUser(id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Also delete from users table
+    await supabase.from('users').delete().eq('id', id)
+    return NextResponse.json({ success: true })
+  }
+
+  // Default: delete listing
   const { error } = await supabase
     .from('listings')
     .delete()
