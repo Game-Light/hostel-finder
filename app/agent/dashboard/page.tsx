@@ -31,6 +31,7 @@ export default function AgentDashboardPage() {
   const [deletingId, setDeletingId]   = useState<string | null>(null)
   const [togglingId, setTogglingId]   = useState<string | null>(null)
   const [successMsg, setSuccessMsg]   = useState('')
+  const [fetchError, setFetchError] = useState(false)
 
   // Check for redirect after create
   useEffect(() => {
@@ -45,6 +46,8 @@ export default function AgentDashboardPage() {
   }, [])
 
   const fetchListings = async () => {
+  setFetchError(false)
+  try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
 
@@ -52,15 +55,19 @@ export default function AgentDashboardPage() {
       .from('users').select('role').eq('id', user.id).single()
     if (profile?.role !== 'agent') { router.push('/listings'); return }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('listings')
       .select('id, name, area, price, room_type, rooms_available, status, views, created_at, slug')
       .eq('agent_id', user.id)
       .order('created_at', { ascending: false })
 
+    if (error) throw error
     setListings(data || [])
-    setLoading(false)
+  } catch {
+    setFetchError(true)
   }
+  setLoading(false)
+}
 
   useEffect(() => { fetchListings() }, [])
 
@@ -99,6 +106,30 @@ export default function AgentDashboardPage() {
       </div>
     </div>
   )
+
+  if (fetchError) return (
+  <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
+    <Navbar />
+    <div className="flex items-center justify-center min-h-[60vh] px-4">
+      <div className="text-center max-w-sm">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ backgroundColor: '#FEE2E2' }}>
+          <svg className="w-8 h-8" style={{ color: '#DC2626' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h1 className="text-xl font-black mb-2" style={{ color: '#0A2A23' }}>Couldn't load your listings</h1>
+        <p className="text-sm font-medium mb-6" style={{ color: '#4B6B62' }}>
+          Something went wrong. Check your connection and try again.
+        </p>
+        <button onClick={() => { setLoading(true); fetchListings() }}
+          className="w-full py-3 rounded-xl font-bold text-sm text-white hover:opacity-90 transition-opacity"
+          style={{ backgroundColor: '#034338' }}>
+          Try again
+        </button>
+      </div>
+    </div>
+  </div>
+)
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>

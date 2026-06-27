@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 interface UserProfile {
   full_name: string
   role: string
+  is_suspended: boolean
 }
 
 const CACHE_KEY = 'hf_user_profile'
@@ -19,66 +20,58 @@ export default function Navbar() {
   const [loading, setLoading]   = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
 
+  const checkSuspension = async (userId: string): Promise<UserProfile | null> => {
+    const { data } = await supabase
+      .from('users')
+      .select('full_name, role, is_suspended')
+      .eq('id', userId)
+      .single()
+    return data || null
+  }
+
   useEffect(() => {
     const init = async () => {
-      // Check sessionStorage cache first — instant, no network call
-      try {
-        const cached = sessionStorage.getItem(CACHE_KEY)
-        if (cached) {
-          setProfile(JSON.parse(cached))
-          setLoading(false)
-          return
-        }
-      } catch {}
-
-      // No cache — fetch from Supabase
       const { data: { session } } = await supabase.auth.getSession()
 
       if (session?.user) {
-        const { data } = await supabase
-          .from('users')
-          .select('full_name, role')
-          .eq('id', session.user.id)
-          .single()
-        if (data) {
-          setProfile(data)
-          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch {}
+        // Always fetch fresh — never cache, so suspension is instant
+        const data = await checkSuspension(session.user.id)
+        if (data?.is_suspended) {
+          await supabase.auth.signOut()
+          router.push('/suspended')
+          return
         }
+        if (data) setProfile(data)
       }
       setLoading(false)
     }
 
     init()
 
-    // Listen for auth changes (login, logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
-        try { sessionStorage.removeItem(CACHE_KEY) } catch {}
         setProfile(null)
         setLoading(false)
         return
       }
 
       if (event === 'SIGNED_IN' && session?.user) {
-        const { data } = await supabase
-          .from('users')
-          .select('full_name, role')
-          .eq('id', session.user.id)
-          .single()
-        if (data) {
-          setProfile(data)
-          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch {}
+        const data = await checkSuspension(session.user.id)
+        if (data?.is_suspended) {
+          await supabase.auth.signOut()
+          router.push('/suspended')
+          return
         }
+        if (data) setProfile(data)
         setLoading(false)
       }
     })
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    try { sessionStorage.removeItem(CACHE_KEY) } catch {}
     setProfile(null)
     setMenuOpen(false)
     router.push('/')

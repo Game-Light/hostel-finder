@@ -34,57 +34,68 @@ const facilityIcons: Record<string, string> = {
 }
 
 export default function HostelDetailClient({ slug }: { slug: string }) {
-
-  const [listing, setListing]     = useState<ListingDetail | null>(null)
-  const [similar, setSimilar]     = useState<ListingDetail[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [notFound, setNotFound]   = useState(false)
+  const [listing, setListing]         = useState<ListingDetail | null>(null)
+  const [similar, setSimilar]         = useState<ListingDetail[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [notFound, setNotFound]       = useState(false)
+  const [fetchError, setFetchError]   = useState(false)
   const [activeMedia, setActiveMedia] = useState(0)
-  const [copied, setCopied]       = useState(false)
-  const [lightbox, setLightbox]   = useState(false)
+  const [copied, setCopied]           = useState(false)
+  const [lightbox, setLightbox]       = useState(false)
 
   const fetchListing = useCallback(async () => {
     setLoading(true)
+    setFetchError(false)
     setActiveMedia(0)
 
-    const { data } = await supabase
-      .from('listings')
-      .select('*, listing_photos(photo_url, is_cover, sort_order), users(full_name, phone)')
-      .eq('slug', slug)
+    try {
+      const { data, error } = await supabase
+        .from('listings')
+        .select('*, listing_photos(photo_url, is_cover, sort_order), users(full_name, phone)')
+        .eq('slug', slug)
+        .single()
 
-      .single()
+      if (error || !data) { 
+        if (error?.code === 'PGRST116') {
+          setNotFound(true)
+        } else {
+          setFetchError(true)
+        }
+        setLoading(false)
+        return
+      }
 
-    if (!data) { setNotFound(true); setLoading(false); return }
-    data.listing_photos = [...(data.listing_photos || [])].sort(
-      (a: Photo, b: Photo) => a.sort_order - b.sort_order
-    )
-    setListing(data)
+      data.listing_photos = [...(data.listing_photos || [])].sort(
+        (a: Photo, b: Photo) => a.sort_order - b.sort_order
+      )
+      setListing(data)
 
-    const { data: sim } = await supabase
-      .from('listings')
-      .select('*, listing_photos(photo_url, is_cover, sort_order), users(full_name, phone)')
-      .eq('status', 'active').eq('room_type', data.room_type)
-      .neq('slug', slug).gt('rooms_available', 0).limit(3)
-    setSimilar(sim || [])
+      const { data: sim } = await supabase
+        .from('listings')
+        .select('*, listing_photos(photo_url, is_cover, sort_order), users(full_name, phone)')
+        .eq('status', 'active').eq('room_type', data.room_type)
+        .neq('slug', slug).gt('rooms_available', 0).limit(3)
+      setSimilar(sim || [])
+    } catch {
+      setFetchError(true)
+    }
+
     setLoading(false)
   }, [slug])
 
   useEffect(() => { fetchListing() }, [fetchListing])
 
-  // Refetch when tab regains focus (fixes back-navigation stale data)
   useEffect(() => {
     const onFocus = () => fetchListing()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [fetchListing])
 
-  // Increment views
   useEffect(() => {
     if (!listing?.id) return
     supabase.from('listings').update({ views: (listing.views || 0) + 1 }).eq('id', listing.id)
   }, [listing?.id])
 
-  // Lightbox keyboard nav
   useEffect(() => {
     if (!lightbox) return
     const photos = listing?.listing_photos || []
@@ -113,14 +124,56 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
     </div>
   )
 
+  if (fetchError) return (
+    <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
+      <Navbar />
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ backgroundColor: '#FEE2E2' }}>
+            <svg className="w-8 h-8" style={{ color: '#DC2626' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-black mb-2" style={{ color: '#0A2A23' }}>Failed to load listing</h1>
+          <p className="text-sm font-medium mb-6" style={{ color: '#4B6B62' }}>
+            Something went wrong while loading this hostel. Check your connection and try again.
+          </p>
+          <div className="flex flex-col gap-3">
+            <button onClick={fetchListing}
+              className="w-full py-3 rounded-xl font-bold text-sm text-white hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: '#034338' }}>
+              Try again
+            </button>
+            <Link href="/listings"
+              className="w-full py-3 rounded-xl font-bold text-sm text-center border hover:bg-gray-50 transition-colors"
+              style={{ color: '#034338', borderColor: '#E8EDEB' }}>
+              Browse all listings
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   if (notFound || !listing) return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
-      <div className="flex items-center justify-center h-64 text-center px-4">
-        <div>
-          <h1 className="text-2xl font-black mb-2" style={{ color: '#0A2A23' }}>Hostel not found</h1>
-          <p className="text-sm mb-6" style={{ color: '#4B6B62' }}>This listing may have been removed.</p>
-          <Link href="/listings" className="font-bold text-sm px-6 py-3 rounded-full text-white" style={{ backgroundColor: '#034338' }}>Browse all listings</Link>
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ backgroundColor: '#F4F6F5' }}>
+            <svg className="w-8 h-8" style={{ color: '#4B6B62' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-black mb-2" style={{ color: '#0A2A23' }}>Hostel not found</h1>
+          <p className="text-sm font-medium mb-6" style={{ color: '#4B6B62' }}>
+            This listing may have been removed or the link is incorrect.
+          </p>
+          <Link href="/listings"
+            className="inline-flex items-center justify-center w-full py-3 rounded-xl font-bold text-sm text-white hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#034338' }}>
+            Browse all listings
+          </Link>
         </div>
       </div>
     </div>
@@ -139,57 +192,36 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
 
-      {/* ── Lightbox ── */}
       {lightbox && photos[activeMedia] && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}
-          onClick={() => setLightbox(false)}
-        >
-          {/* Close */}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.92)' }} onClick={() => setLightbox(false)}>
           <button className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors z-10"
             onClick={() => setLightbox(false)}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-
-          {/* Counter */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/60 text-sm font-medium">
             {activeMedia + 1} / {photos.length}
           </div>
-
-          {/* Prev */}
           {activeMedia > 0 && (
-            <button
-              className="absolute left-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
+            <button className="absolute left-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
               onClick={e => { e.stopPropagation(); setActiveMedia(p => p - 1) }}>
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
           )}
-
-          {/* Image */}
-          <img
-            src={photos[activeMedia].photo_url}
-            alt={listing.name}
-            className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl"
-            onClick={e => e.stopPropagation()}
-          />
-
-          {/* Next */}
+          <img src={photos[activeMedia].photo_url} alt={listing.name}
+            className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
           {activeMedia < photos.length - 1 && (
-            <button
-              className="absolute right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
+            <button className="absolute right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
               onClick={e => { e.stopPropagation(); setActiveMedia(p => p + 1) }}>
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
           )}
-
-          {/* Thumbnail strip */}
           {photos.length > 1 && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
               {photos.map((_, i) => (
@@ -202,7 +234,6 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
         </div>
       )}
 
-      {/* Breadcrumb */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
         <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#4B6B62' }}>
           <Link href="/" className="hover:text-[#034338] transition-colors">Home</Link>
@@ -215,11 +246,7 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-16">
         <div className="flex flex-col lg:flex-row gap-8">
-
-          {/* Left column */}
           <div className="flex-1 min-w-0">
-
-            {/* Media gallery */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm mb-6">
               <div className="h-64 sm:h-80 relative overflow-hidden group" style={{ backgroundColor: '#1a4a3a' }}>
                 {isActiveVideo ? (
@@ -227,13 +254,9 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                 ) : photos[activeMedia] ? (
                   <>
                     <img src={photos[activeMedia].photo_url} alt={listing.name} className="w-full h-full object-cover cursor-zoom-in" onClick={() => setLightbox(true)} />
-                    {/* Fullscreen icon */}
-                    <button
-                      onClick={() => setLightbox(true)}
+                    <button onClick={() => setLightbox(true)}
                       className="absolute top-3 right-3 w-9 h-9 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                      style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: '#FFFFFF' }}
-                      title="View full size"
-                    >
+                      style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: '#FFFFFF' }}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                       </svg>
@@ -252,7 +275,6 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                   </div>
                 )}
               </div>
-
               {totalMedia > 1 && (
                 <div className="flex gap-2 p-3 overflow-x-auto">
                   {photos.map((photo, i) => (
@@ -275,14 +297,16 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
               )}
             </div>
 
-            {/* Pending/inactive banner */}
             {listing.status !== 'active' && (
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4 text-sm font-medium" style={{ backgroundColor: listing.status === 'pending' ? '#FEF3C7' : '#F3F4F6', color: listing.status === 'pending' ? '#92400E' : '#6B7280' }}>
-                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4 text-sm font-medium"
+                style={{ backgroundColor: listing.status === 'pending' ? '#FEF3C7' : '#F3F4F6', color: listing.status === 'pending' ? '#92400E' : '#6B7280' }}>
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 {listing.status === 'pending' ? 'This listing is pending review and not yet visible to students.' : 'This listing is inactive and not visible to students.'}
               </div>
             )}
-            {/* Hostel info */}
+
             <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div>
@@ -297,7 +321,6 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                 </div>
                 <span className="text-sm font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>{label}</span>
               </div>
-
               <div className="grid grid-cols-3 gap-3 mb-6">
                 {[
                   { label: 'Price / year', value: `₦${listing.price.toLocaleString()}` },
@@ -310,12 +333,10 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                   </div>
                 ))}
               </div>
-
               <h2 className="text-base font-bold mb-2" style={{ color: '#0A2A23' }}>About this hostel</h2>
               <p className="text-sm leading-relaxed" style={{ color: '#3D6058' }}>{listing.description}</p>
             </div>
 
-            {/* Facilities */}
             {listing.facilities?.length > 0 && (
               <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
                 <h2 className="text-base font-bold mb-4" style={{ color: '#0A2A23' }}>Facilities</h2>
@@ -329,7 +350,6 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
               </div>
             )}
 
-            {/* Similar listings */}
             {similar.length > 0 && (
               <div>
                 <h2 className="text-lg font-black mb-4" style={{ color: '#0A2A23' }}>Similar listings</h2>
@@ -359,7 +379,6 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
             )}
           </div>
 
-          {/* Agent card */}
           <div className="w-full lg:w-72 shrink-0">
             <div className="sticky top-24">
               <div className="rounded-2xl overflow-hidden shadow-lg mb-4" style={{ backgroundColor: '#034338' }}>
@@ -381,7 +400,6 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                       {listing.rooms_available === 0 ? 'No rooms available' : `${listing.rooms_available} room${listing.rooms_available !== 1 ? 's' : ''} available`}
                     </p>
                   </div>
-
                   {listing.rooms_available > 0 ? (
                     <>
                       <a href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`} target="_blank" rel="noopener noreferrer"
@@ -392,7 +410,8 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                         </svg>
                         WhatsApp Agent
                       </a>
-                      <button onClick={handleCopyPhone} className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-bold text-sm transition-all border cursor-pointer"
+                      <button onClick={handleCopyPhone}
+                        className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-bold text-sm transition-all border cursor-pointer"
                         style={{ backgroundColor: 'transparent', color: copied ? '#37D76A' : '#FFFFFF', borderColor: copied ? '#37D76A' : 'rgba(255,255,255,0.25)' }}>
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
