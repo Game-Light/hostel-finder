@@ -12,7 +12,7 @@ interface ListingDetail {
   distance_tag: string; price: number; room_type: string
   rooms_available: number; facilities: string[]; whatsapp_number: string
   video_url: string | null; slug: string; views: number; address: string | null
-  status: string
+  status: string; whatsapp_clicks: number  // ← add this
   listing_photos: Photo[]
   users: { full_name: string; phone: string | null }
 }
@@ -114,6 +114,14 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  const handleWhatsAppClick = async () => {
+  if (!listing?.id) return
+  await supabase
+    .from('listings')
+    .update({ whatsapp_clicks: (listing.whatsapp_clicks || 0) + 1 })
+    .eq('id', listing.id)
+}
 
   if (loading) return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
@@ -335,6 +343,15 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
               </div>
               <h2 className="text-base font-bold mb-2" style={{ color: '#0A2A23' }}>About this hostel</h2>
               <p className="text-sm leading-relaxed" style={{ color: '#3D6058' }}>{listing.description}</p>
+
+              {/* Views count */}
+              <div className="flex items-center gap-1.5 mt-4 pt-4 border-t" style={{ borderColor: '#E8EDEB' }}>
+                <svg className="w-3.5 h-3.5" style={{ color: '#9CA3AF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span className="text-xs font-medium" style={{ color: '#9CA3AF' }}>{listing.views} people viewed this listing</span>
+              </div>
             </div>
 
             {listing.facilities?.length > 0 && (
@@ -403,6 +420,7 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                   {listing.rooms_available > 0 ? (
                     <>
                       <a href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`} target="_blank" rel="noopener noreferrer"
+                        onClick={handleWhatsAppClick}
                         className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-bold text-sm mb-3 transition-opacity hover:opacity-90 cursor-pointer"
                         style={{ backgroundColor: '#37D76A', color: '#034338' }}>
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
