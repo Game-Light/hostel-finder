@@ -118,18 +118,9 @@ export default function RegisterPage() {
         })
         .eq('id', userId)
 
-      // Award referral points to the referring agent
+      // Award referral points via secure database function
       if (referredById) {
-        const { data: referrer } = await supabase
-          .from('users')
-          .select('referral_points')
-          .eq('id', referredById)
-          .single()
-
-        await supabase
-          .from('users')
-          .update({ referral_points: (referrer?.referral_points || 0) + 10 })
-          .eq('id', referredById)
+        await supabase.rpc('increment_referral_points', { referrer_id: referredById })
       }
     }
 
