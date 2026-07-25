@@ -282,6 +282,18 @@ export default function RegisterPage() {
                     <>
                       <div>
                         <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                          Phone / WhatsApp number <span style={{ color: '#DC2626' }}>*</span>
+                        </label>
+                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                          placeholder="080XXXXXXXX" required
+                          className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                          style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
+                          onFocus={e => e.target.style.borderColor = '#034338'}
+                          onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
                           Invite code or referral code <span style={{ color: '#DC2626' }}>*</span>
                         </label>
                         <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
