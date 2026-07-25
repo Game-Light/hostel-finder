@@ -43,10 +43,6 @@ export default function RegisterPage() {
     }
 
     if (role === 'agent') {
-      if (!phone.trim()) {
-        setError('Phone number is required for agents.')
-        return
-      }
       if (!inviteCode.trim()) {
         setError('An invite code or referral code is required.')
         return
@@ -90,7 +86,6 @@ export default function RegisterPage() {
         data: {
           full_name: fullName,
           role,
-          phone: phone || null,
         },
       },
     })
@@ -280,19 +275,7 @@ export default function RegisterPage() {
 
                   {role === 'agent' && (
                     <>
-                      <div>
-                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                          Phone / WhatsApp number <span style={{ color: '#DC2626' }}>*</span>
-                        </label>
-                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-                          placeholder="080XXXXXXXX" required
-                          className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                          style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
-                          onFocus={e => e.target.style.borderColor = '#034338'}
-                          onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
-                      </div>
-
-                      <div>
+                    <div>
                         <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
                           Invite code or referral code <span style={{ color: '#DC2626' }}>*</span>
                         </label>
