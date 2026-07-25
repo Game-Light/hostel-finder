@@ -162,12 +162,12 @@ export default function Navbar() {
           ) : (
             <>
               <Link href="/login" style={{ color: '#FFFFFF' }}
-                className="text-sm font-medium px-3 py-2 hover:text-[#37D76A] transition-colors">
+                className="text-sm font-medium px-3 py-2 hover:text-[#37D76A] transition-colors whitespace-nowrap">
                 Log in
               </Link>
               <Link href="/register" style={{ backgroundColor: '#37D76A' }}
-                className="text-[#034338] font-bold text-sm px-5 py-2.5 rounded-full hover:opacity-90 transition-opacity">
-                List your hostel
+                className="text-[#034338] font-bold text-sm px-4 py-2.5 rounded-full hover:opacity-90 transition-opacity whitespace-nowrap">
+                Sign up
               </Link>
             </>
           )}

@@ -11,6 +11,15 @@ type Step = 'role' | 'details'
 
 const AGENT_INVITE_CODE = process.env.NEXT_PUBLIC_AGENT_INVITE_CODE || 'FUOYE2026'
 
+function generateReferralCode(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let code = ''
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return code
+}
+
 export default function RegisterPage() {
   const router = useRouter()
   const [step, setStep]             = useState<Step>('role')
@@ -38,15 +47,43 @@ export default function RegisterPage() {
         setError('Phone number is required for agents.')
         return
       }
-      if (inviteCode.trim().toUpperCase() !== AGENT_INVITE_CODE.toUpperCase()) {
-        setError('Invalid invite code. Contact us on WhatsApp to get your agent code.')
+      if (!inviteCode.trim()) {
+        setError('An invite code or referral code is required.')
         return
       }
     }
 
     setLoading(true)
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    // For agents, validate the code — either global invite or a referral code
+    let referredById: string | null = null
+
+    if (role === 'agent') {
+      const isGlobalCode = inviteCode.trim().toUpperCase() === AGENT_INVITE_CODE.toUpperCase()
+
+      if (!isGlobalCode) {
+        // Check if it's a valid referral code
+        const { data: referrer } = await supabase
+          .from('users')
+          .select('id')
+          .eq('referral_code', inviteCode.trim().toUpperCase())
+          .eq('role', 'agent')
+          .single()
+
+        if (!referrer) {
+          setError('Invalid invite or referral code. Check the code and try again.')
+          setLoading(false)
+          return
+        }
+
+        referredById = referrer.id
+      }
+    }
+
+    // Generate a referral code for new agents
+    const referralCode = role === 'agent' ? generateReferralCode() : null
+
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -58,13 +95,45 @@ export default function RegisterPage() {
       },
     })
 
-    setLoading(false)
-
     if (signUpError) {
       setError(signUpError.message)
+      setLoading(false)
       return
     }
 
+    const userId = authData.user?.id
+    if (!userId) {
+      setError('Something went wrong. Please try again.')
+      setLoading(false)
+      return
+    }
+
+    // Update the users table with referral data
+    if (role === 'agent') {
+      await supabase
+        .from('users')
+        .update({
+          referral_code: referralCode,
+          referred_by: referredById,
+        })
+        .eq('id', userId)
+
+      // Award referral points to the referring agent
+      if (referredById) {
+        const { data: referrer } = await supabase
+          .from('users')
+          .select('referral_points')
+          .eq('id', referredById)
+          .single()
+
+        await supabase
+          .from('users')
+          .update({ referral_points: (referrer?.referral_points || 0) + 10 })
+          .eq('id', referredById)
+      }
+    }
+
+    setLoading(false)
     router.push(role === 'agent' ? '/agent/dashboard' : '/listings')
   }
 
@@ -148,7 +217,7 @@ export default function RegisterPage() {
                   <div className="flex items-start gap-3 px-4 py-3 rounded-xl mb-6" style={{ backgroundColor: '#E8F5EE' }}>
                     <span className="text-base mt-0.5">ℹ️</span>
                     <p className="text-xs font-medium leading-relaxed" style={{ color: '#3D6058' }}>
-                      Agent accounts require an invite code.{' '}
+                      Agent accounts require an invite code or a referral code from an existing agent.{' '}
                       <a href="https://wa.me/2349122781346?text=Hi, I want to list my hostel on Hostel Finder. Can I get the agent code?"
                         target="_blank" rel="noopener noreferrer"
                         className="font-bold hover:underline" style={{ color: '#034338' }}>
@@ -221,7 +290,9 @@ export default function RegisterPage() {
                   {role === 'agent' && (
                     <>
                       <div>
-                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Phone / WhatsApp number</label>
+                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                          Phone / WhatsApp number <span style={{ color: '#DC2626' }}>*</span>
+                        </label>
                         <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
                           placeholder="080XXXXXXXX" required
                           className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
@@ -231,19 +302,22 @@ export default function RegisterPage() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Agent invite code</label>
+                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                          Invite code or referral code <span style={{ color: '#DC2626' }}>*</span>
+                        </label>
                         <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
-                          placeholder="Enter your invite code" required
+                          placeholder="Enter invite or referral code"
+                          required
                           className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
                           style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
                           onFocus={e => e.target.style.borderColor = '#034338'}
                           onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
                         <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
-                          Don't have a code?{' '}
+                          Use the global invite code or a referral code from an existing agent.{' '}
                           <a href="https://wa.me/2349122781346?text=Hi, I want to list my hostel on Hostel Finder. Can I get the agent code?"
                             target="_blank" rel="noopener noreferrer"
                             className="font-bold hover:underline" style={{ color: '#034338' }}>
-                            Request one on WhatsApp
+                            Get a code on WhatsApp
                           </a>
                         </p>
                       </div>

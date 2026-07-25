@@ -36,6 +36,9 @@ export default function AgentDashboardPage() {
   const [phoneInput, setPhoneInput]         = useState('')
   const [savingPhone, setSavingPhone]       = useState(false)
   const [phoneError, setPhoneError]         = useState('')
+  const [referralCode, setReferralCode]   = useState('')
+  const [referralPoints, setReferralPoints] = useState(0)
+  const [codeCopied, setCodeCopied]       = useState(false)
 
   // Check for redirect after create
   useEffect(() => {
@@ -56,9 +59,11 @@ export default function AgentDashboardPage() {
     if (!user) { router.push('/login'); return }
 
     const { data: profile } = await supabase
-      .from('users').select('role, phone').eq('id', user.id).single()
+      .from('users').select('role, phone, referral_code, referral_points').eq('id', user.id).single()
     if (profile?.role !== 'agent') { router.push('/listings'); return }
     if (!profile?.phone) { setShowPhoneModal(true) }
+    if (profile?.referral_code) setReferralCode(profile.referral_code)
+    if (profile?.referral_points) setReferralPoints(profile.referral_points)
 
     const { data, error } = await supabase
       .from('listings')
@@ -118,6 +123,12 @@ export default function AgentDashboardPage() {
       return
     }
     setShowPhoneModal(false)
+  }
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(referralCode)
+    setCodeCopied(true)
+    setTimeout(() => setCodeCopied(false), 2000)
   }
 
   const activeCount  = listings.filter(l => l.status === 'active').length
@@ -201,6 +212,48 @@ export default function AgentDashboardPage() {
             </div>
           ))}
         </div>
+
+        {/* Referral card */}
+        {referralCode && (
+          <div className="bg-white rounded-2xl p-5 shadow-sm mb-8 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold mb-1" style={{ color: '#4B6B62' }}>YOUR REFERRAL CODE</p>
+              <p className="text-sm font-medium mb-1" style={{ color: '#3D6058' }}>
+                Share this code with other agents to earn referral points when they sign up.
+              </p>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="text-xl font-black tracking-widest" style={{ color: '#034338' }}>{referralCode}</span>
+                <button
+                  onClick={handleCopyCode}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+                  style={{
+                    backgroundColor: codeCopied ? '#DCFCE7' : '#F4F6F5',
+                    color: codeCopied ? '#166534' : '#034338',
+                  }}>
+                  {codeCopied ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="shrink-0 text-center px-5 py-3 rounded-2xl" style={{ backgroundColor: '#F4F6F5' }}>
+              <div className="text-3xl font-black" style={{ color: '#034338' }}>{referralPoints}</div>
+              <div className="text-xs font-bold mt-0.5" style={{ color: '#4B6B62' }}>Referral points</div>
+            </div>
+          </div>
+        )}
 
         {/* Listings */}
         {listings.length === 0 ? (
