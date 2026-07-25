@@ -106,8 +106,13 @@ export default function AgentDashboardPage() {
 
   const handleSavePhone = async () => {
     setPhoneError('')
+    const digits = phoneInput.trim().replace(/\D/g, '')
     if (!phoneInput.trim()) {
       setPhoneError('Please enter your WhatsApp number.')
+      return
+    }
+    if (digits.length !== 11) {
+      setPhoneError('Enter a valid 11-digit Nigerian phone number.')
       return
     }
     setSavingPhone(true)
