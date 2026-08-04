@@ -49,3 +49,13 @@ img {
 a {
   text-decoration: none;
 }
+
+img, video {
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: auto;
+}
+
+img::selection, video::selection {
+  background: transparent;
+}

@@ -42,6 +42,7 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
   const [activeMedia, setActiveMedia] = useState(0)
   const [copied, setCopied]           = useState(false)
   const [lightbox, setLightbox]       = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
 
   const fetchListing = useCallback(async () => {
     setLoading(true)
@@ -121,6 +122,25 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
     .from('listings')
     .update({ whatsapp_clicks: (listing.whatsapp_clicks || 0) + 1 })
     .eq('id', listing.id)
+}
+
+const handleShare = async () => {
+  const url = window.location.href
+  const shareData = {
+    title: listing?.name || 'Hostel Finder',
+    text: `Check out ${listing?.name} on Hostel Finder — ₦${listing?.price.toLocaleString()}/yr in ${listing?.area}`,
+    url,
+  }
+
+  if (navigator.share && navigator.canShare?.(shareData)) {
+    try {
+      await navigator.share(shareData)
+    } catch {}
+  } else {
+    navigator.clipboard.writeText(url)
+    setShareCopied(true)
+    setTimeout(() => setShareCopied(false), 2000)
+  }
 }
 
   if (loading) return (
@@ -221,7 +241,12 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
             </button>
           )}
           <img src={photos[activeMedia].photo_url} alt={listing.name}
-            className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
+            className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl"
+            onContextMenu={e => e.preventDefault()}
+            onDragStart={e => e.preventDefault()}
+            style={{ userSelect: 'none', WebkitUserDrag: 'none' } as React.CSSProperties}
+            onClick={e => e.stopPropagation()}
+          />
           {activeMedia < photos.length - 1 && (
             <button className="absolute right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
               onClick={e => { e.stopPropagation(); setActiveMedia(p => p + 1) }}>
@@ -258,10 +283,20 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm mb-6">
               <div className="h-64 sm:h-80 relative overflow-hidden group" style={{ backgroundColor: '#1a4a3a' }}>
                 {isActiveVideo ? (
-                  <video src={listing.video_url!} controls className="w-full h-full object-contain" />
+                  <video src={listing.video_url!} controls
+                    onContextMenu={e => e.preventDefault()}
+                    controlsList="nodownload"
+                    className="w-full h-full object-contain"
+                  />
                 ) : photos[activeMedia] ? (
                   <>
-                    <img src={photos[activeMedia].photo_url} alt={listing.name} className="w-full h-full object-cover cursor-zoom-in" onClick={() => setLightbox(true)} />
+                    <img src={photos[activeMedia].photo_url} alt={listing.name}
+                      className="w-full h-full object-cover cursor-zoom-in"
+                      onContextMenu={e => e.preventDefault()}
+                      onDragStart={e => e.preventDefault()}
+                      style={{ userSelect: 'none', WebkitUserDrag: 'none' } as React.CSSProperties}
+                      onClick={() => setLightbox(true)}
+                    />
                     <button onClick={() => setLightbox(true)}
                       className="absolute top-3 right-3 w-9 h-9 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                       style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: '#FFFFFF' }}>
@@ -289,7 +324,11 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                     <button key={i} onClick={() => setActiveMedia(i)}
                       className="shrink-0 w-16 h-12 rounded-lg overflow-hidden transition-all cursor-pointer"
                       style={{ outline: activeMedia === i ? '2px solid #37D76A' : '2px solid transparent', outlineOffset: '2px' }}>
-                      <img src={photo.photo_url} alt="" className="w-full h-full object-cover" />
+                      <img src={photo.photo_url} alt="" className="w-full h-full object-cover"
+                          onContextMenu={e => e.preventDefault()}
+                          onDragStart={e => e.preventDefault()}
+                          style={{ userSelect: 'none', WebkitUserDrag: 'none' } as React.CSSProperties}
+                        />
                     </button>
                   ))}
                   {hasVideo && (
@@ -327,7 +366,33 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                     {listing.area} · {listing.distance_tag} to FUOYE main gate
                   </div>
                 </div>
-                <span className="text-sm font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>{label}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>{label}</span>
+                  <button
+                    onClick={handleShare}
+                    className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border transition-all hover:bg-gray-50 cursor-pointer"
+                    style={{
+                      borderColor: shareCopied ? '#37D76A' : '#E8EDEB',
+                      color: shareCopied ? '#166534' : '#4B6B62',
+                      backgroundColor: shareCopied ? '#DCFCE7' : 'transparent',
+                    }}>
+                    {shareCopied ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Link copied!
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                        </svg>
+                        Share
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-3 mb-6">
                 {[
@@ -377,7 +442,13 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
                       <Link href={`/listings/${l.slug}`} key={l.id}
                         className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
                         <div className="h-28 relative overflow-hidden" style={{ backgroundColor: '#1a4a3a' }}>
-                          {cover && <img src={cover.photo_url} alt={l.name} className="w-full h-full object-cover" />}
+                          {cover && <img src={cover.photo_url} alt={l.name}
+                                      className="w-full h-full object-cover"
+                                      onContextMenu={e => e.preventDefault()}
+                                      onDragStart={e => e.preventDefault()}
+                                      style={{ userSelect: 'none', WebkitUserDrag: 'none' } as React.CSSProperties}
+                                    />
+                          }
                           <div className="absolute top-2 left-2">
                             <span className="text-xs font-black px-2 py-1 rounded-full" style={{ backgroundColor: '#37D76A', color: '#034338' }}>
                               ₦{l.price.toLocaleString()}/yr

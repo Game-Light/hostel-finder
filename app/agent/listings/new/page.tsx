@@ -90,20 +90,39 @@ export default function NewListingPage() {
     init()
   }, [router])
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const remaining = 6 - photos.length
     const toAdd = files.slice(0, remaining)
+    e.target.value = ''
 
-    setPhotos(prev => [...prev, ...toAdd])
-    toAdd.forEach(file => {
+    for (const file of toAdd) {
+      // Show preview immediately from original
       const reader = new FileReader()
       reader.onload = ev => {
         setPhotoPreviews(prev => [...prev, ev.target?.result as string])
       }
       reader.readAsDataURL(file)
-    })
-    e.target.value = ''
+
+      // Watermark the file before adding to upload queue
+      try {
+        const fd = new FormData()
+        fd.append('image', file)
+        const res = await fetch('/api/watermark', { method: 'POST', body: fd })
+
+        if (res.ok) {
+          const blob = await res.blob()
+          const watermarkedFile = new File([blob], file.name, { type: 'image/jpeg' })
+          setPhotos(prev => [...prev, watermarkedFile])
+        } else {
+          // Fallback to original if watermark fails
+          setPhotos(prev => [...prev, file])
+        }
+      } catch {
+        // Fallback to original if watermark fails
+        setPhotos(prev => [...prev, file])
+      }
+    }
   }
 
   const removePhoto = (index: number) => {
