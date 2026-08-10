@@ -6,7 +6,7 @@ import Navbar from '@/components/Navbar'
 import { supabase } from '@/lib/supabase'
 
 const FACILITIES = [
-  'Running water', '24hr electricity', 'Prepaid meter',
+  'Running water', 'Electricity', 'Prepaid meter',
   'Security', 'Parking', 'Wi-Fi', 'Fence/gate', 'Borehole',
 ]
 

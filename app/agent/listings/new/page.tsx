@@ -6,7 +6,7 @@ import Navbar from '@/components/Navbar'
 import { supabase } from '@/lib/supabase'
 
 const FACILITIES = [
-  'Running water', '24hr electricity', 'Prepaid meter',
+  'Running water', 'Electricity', 'Prepaid meter',
   'Security', 'Parking', 'Wi-Fi', 'Fence/gate', 'Borehole',
 ]
 
@@ -90,39 +90,19 @@ export default function NewListingPage() {
     init()
   }, [router])
 
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const remaining = 6 - photos.length
     const toAdd = files.slice(0, remaining)
-    e.target.value = ''
-
-    for (const file of toAdd) {
-      // Show preview immediately from original
+    setPhotos(prev => [...prev, ...toAdd])
+    toAdd.forEach(file => {
       const reader = new FileReader()
       reader.onload = ev => {
         setPhotoPreviews(prev => [...prev, ev.target?.result as string])
       }
       reader.readAsDataURL(file)
-
-      // Watermark the file before adding to upload queue
-      try {
-        const fd = new FormData()
-        fd.append('image', file)
-        const res = await fetch('/api/watermark', { method: 'POST', body: fd })
-
-        if (res.ok) {
-          const blob = await res.blob()
-          const watermarkedFile = new File([blob], file.name, { type: 'image/jpeg' })
-          setPhotos(prev => [...prev, watermarkedFile])
-        } else {
-          // Fallback to original if watermark fails
-          setPhotos(prev => [...prev, file])
-        }
-      } catch {
-        // Fallback to original if watermark fails
-        setPhotos(prev => [...prev, file])
-      }
-    }
+    })
+    e.target.value = ''
   }
 
   const removePhoto = (index: number) => {

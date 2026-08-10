@@ -28,7 +28,7 @@ const roomTypeBadge: Record<string, { bg: string; text: string }> = {
   'Mini Flat':    { bg: '#EDE9FE', text: '#5B21B6' },
 }
 const facilityIcons: Record<string, string> = {
-  'Running water': '💧', '24hr electricity': '⚡', 'Prepaid meter': '🔌',
+  'Running water': '💧', 'Electricity': '⚡', 'Prepaid meter': '🔌',
   'Security': '🔒', 'Parking': '🚗', 'Wi-Fi': '📶',
   'Fence/gate': '🏠', 'Borehole': '🚰',
 }
@@ -93,9 +93,14 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
   }, [fetchListing])
 
   useEffect(() => {
-    if (!listing?.id) return
-    supabase.from('listings').update({ views: (listing.views || 0) + 1 }).eq('id', listing.id)
-  }, [listing?.id])
+  if (!listing?.id) return
+
+  const viewedKey = `viewed_${listing.id}`
+  if (sessionStorage.getItem(viewedKey)) return
+
+  sessionStorage.setItem(viewedKey, '1')
+  supabase.rpc('increment_listing_views', { listing_id: listing.id })
+}, [listing?.id])
 
   useEffect(() => {
     if (!lightbox) return
@@ -214,7 +219,8 @@ const handleShare = async () => {
   const totalMedia = photos.length + (hasVideo ? 1 : 0)
   const isActiveVideo = hasVideo && activeMedia === photos.length
   const whatsappNumber = listing.whatsapp_number?.replace(/^0/, '234') || ''
-  const whatsappMessage = encodeURIComponent(`Hi, I found your hostel "${listing.name}" on Hostel Finder. I'm interested in a room. Is it still available?`)
+  const listingUrl = typeof window !== 'undefined' ? window.location.href : ''
+  const whatsappMessage = encodeURIComponent(`Hi, I found your hostel "${listing.name}" on Hostel Finder and I'm interested in a room. Is it still available?\n\n${listingUrl}`)
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
@@ -467,7 +473,7 @@ const handleShare = async () => {
             )}
           </div>
 
-          <div className="w-full lg:w-72 shrink-0">
+          <div className="w-full lg:w-72 shrink-0 order-first lg:order-last">
             <div className="sticky top-24">
               <div className="rounded-2xl overflow-hidden shadow-lg mb-4" style={{ backgroundColor: '#034338' }}>
                 <div className="p-5">
