@@ -1,686 +1,378 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import AuthGateModal from '@/components/AuthGateModal'
 import { supabase } from '@/lib/supabase'
 
-const FACILITIES = [
-  'Running water', 'Electricity', 'Prepaid meter',
-  'Security', 'Parking', 'Wi-Fi', 'Fence/gate', 'Borehole',
-]
-
-const ROOM_TYPES = [
-  { value: 'self_contain', label: 'Self-contain' },
-  { value: 'single',       label: 'Single Room' },
-  { value: 'shared',       label: 'Shared Room' },
-  { value: 'mini_flat',    label: 'Mini Flat' },
-]
-
-const DISTANCE_OPTIONS = [
-  'Walking distance',
-  '5 mins walk',
-  '10 mins walk',
-  '15+ mins walk',
-]
-
-const FUOYE_AREAS = [
-  'Oye Town', 'School Road', 'Behind Campus',
-  'Ikole Road', 'New Site', 'Other',
-]
-
-const RENT_DURATIONS = [
-  { value: '12', label: '12 months (1 year)' },
-  { value: '6',  label: '6 months' },
-  { value: 'other', label: 'Other' },
-]
-
-function generateSlug(name: string): string {
-  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-  const suffix = Math.random().toString(36).slice(2, 6)
-  return `${base}-${suffix}`
+interface Listing {
+  id: string; name: string; area: string; distance_tag: string
+  price: number; room_type: string; rooms_available: number; slug: string
+  listing_photos: { photo_url: string; is_cover: boolean }[]
 }
 
-export default function NewListingPage() {
-  const router = useRouter()
-  const photoInputRef = useRef<HTMLInputElement>(null)
-  const videoInputRef = useRef<HTMLInputElement>(null)
+const ROOM_TYPES = ['All', 'Self-contain', 'Single Room', 'Shared Room', 'Mini Flat']
 
-  const [agentId, setAgentId] = useState<string | null>(null)
+const roomTypeMap: Record<string, string> = {
+  self_contain: 'Self-contain', single: 'Single Room',
+  shared: 'Shared Room', mini_flat: 'Mini Flat',
+}
+const roomTypeToDb: Record<string, string> = {
+  'Self-contain': 'self_contain', 'Single Room': 'single',
+  'Shared Room': 'shared', 'Mini Flat': 'mini_flat',
+}
+const urlTypeToLabel: Record<string, string> = {
+  self_contain: 'Self-contain', single: 'Single Room',
+  shared: 'Shared Room', mini_flat: 'Mini Flat',
+}
+const roomTypeBadge: Record<string, { bg: string; text: string }> = {
+  'Self-contain': { bg: '#DCFCE7', text: '#166534' },
+  'Single Room': { bg: '#DBEAFE', text: '#1E40AF' },
+  'Shared Room': { bg: '#FEF3C7', text: '#92400E' },
+  'Mini Flat': { bg: '#EDE9FE', text: '#5B21B6' },
+}
+const SORT_OPTIONS = [
+  { label: 'Newest first', value: 'newest' },
+  { label: 'Price: Low–High', value: 'price_asc' },
+  { label: 'Price: High–Low', value: 'price_desc' },
+]
 
-  const [name, setName]               = useState('')
-  const [description, setDescription] = useState('')
-  const [price, setPrice]             = useState('')
-  const [rentDuration, setRentDuration] = useState('12')
-  const [customDuration, setCustomDuration] = useState('')
-  const [roomType, setRoomType]       = useState('self_contain')
-  const [rooms, setRooms]             = useState('1')
-  const [area, setArea]               = useState('Oye Town')
-  const [customArea, setCustomArea]   = useState('')
-  const [distance, setDistance]       = useState('5 mins walk')
-  const [facilities, setFacilities]   = useState<string[]>([])
-  const [whatsapp, setWhatsapp]       = useState('')
-  const [address, setAddress]         = useState('')
+function ListingsContent() {
+  const searchParams = useSearchParams()
 
-  const [photos, setPhotos]           = useState<File[]>([])
-  const [photoPreviews, setPhotoPreviews] = useState<string[]>([])
-  const [video, setVideo]             = useState<File | null>(null)
-  const [videoPreview, setVideoPreview] = useState<string | null>(null)
+  const [allListings, setAllListings] = useState<Listing[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
 
-  const [loading, setLoading]         = useState(false)
-  const [error, setError]             = useState('')
-  const [uploadProgress, setUploadProgress] = useState('')
+  const [search, setSearch] = useState(searchParams.get('search') || '')
+  const [roomType, setRoomType] = useState(() => {
+    const t = searchParams.get('type')
+    return t ? (urlTypeToLabel[t] || 'All') : 'All'
+  })
+  const [maxPrice, setMaxPrice] = useState(1000000)
+  const [sort, setSort] = useState('newest')
+
+  const fetchData = useCallback(async () => {
+    setLoadingData(true)
+    const [{ data: { user } }, { data }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from('listings')
+        .select('id, name, area, distance_tag, price, room_type, rooms_available, slug, listing_photos(photo_url, is_cover)')
+        .eq('status', 'active')
+        .gt('rooms_available', 0)
+        .order('created_at', { ascending: false }),
+    ])
+    setIsLoggedIn(!!user)
+    setAllListings(data || [])
+    setLoadingData(false)
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-
-      const { data: profile } = await supabase
-        .from('users')
-        .select('role, phone')
-        .eq('id', user.id)
-        .single()
-
-      if (profile?.role !== 'agent') { router.push('/listings'); return }
-
-      setAgentId(user.id)
-      setWhatsapp(profile?.phone || '')
-    }
-    init()
-  }, [router])
-
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    const remaining = 6 - photos.length
-    const toAdd = files.slice(0, remaining)
-    setPhotos(prev => [...prev, ...toAdd])
-    toAdd.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = ev => {
-        setPhotoPreviews(prev => [...prev, ev.target?.result as string])
-      }
-      reader.readAsDataURL(file)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setIsLoggedIn(!!session?.user)
     })
-    e.target.value = ''
-  }
+    return () => subscription.unsubscribe()
+  }, [])
 
-  const removePhoto = (index: number) => {
-    setPhotos(prev => prev.filter((_, i) => i !== index))
-    setPhotoPreviews(prev => prev.filter((_, i) => i !== index))
-  }
+  useEffect(() => {
+    const onFocus = () => fetchData()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [fetchData])
 
-  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setVideo(file)
-    setVideoPreview(URL.createObjectURL(file))
-    e.target.value = ''
-  }
-
-  const removeVideo = () => {
-    setVideo(null)
-    setVideoPreview(null)
-  }
-
-  const toggleFacility = (f: string) => {
-    setFacilities(prev =>
-      prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]
-    )
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-
-    if (photos.length === 0) {
-      setError('Please upload at least one photo of the hostel.')
-      return
+  const handleCardClick = useCallback((e: React.MouseEvent) => {
+    if (!isLoggedIn) {
+      e.preventDefault()
+      setShowAuthModal(true)
     }
+  }, [isLoggedIn])
 
-    if (rentDuration === 'other' && !customDuration.trim()) {
-      setError('Please specify the rent duration.')
-      return
+  const filtered = useMemo(() => {
+    let list = [...allListings]
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(l => l.name.toLowerCase().includes(q) || l.area.toLowerCase().includes(q))
     }
+    if (roomType !== 'All') list = list.filter(l => l.room_type === roomTypeToDb[roomType])
+    list = list.filter(l => l.price <= maxPrice)
+    if (sort === 'price_asc') list.sort((a, b) => a.price - b.price)
+    if (sort === 'price_desc') list.sort((a, b) => b.price - a.price)
+    return list
+  }, [allListings, search, roomType, maxPrice, sort])
 
-    if (!agentId) return
-    setLoading(true)
-
-    try {
-      const slug = generateSlug(name)
-      const finalArea = area === 'Other' ? customArea : area
-      const finalDuration = rentDuration === 'other' ? customDuration.trim() : rentDuration
-
-      setUploadProgress('Uploading photos...')
-      const photoUrls: string[] = []
-
-      for (let i = 0; i < photos.length; i++) {
-        const file = photos[i]
-        const ext = file.name.split('.').pop()
-        const path = `${agentId}/${slug}/photo-${i + 1}.${ext}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('listing-photos')
-          .upload(path, file, { upsert: true })
-
-        if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`)
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('listing-photos')
-          .getPublicUrl(path)
-
-        photoUrls.push(publicUrl)
-      }
-
-      let videoUrl: string | null = null
-
-      if (video) {
-        setUploadProgress('Uploading video...')
-        const ext = video.name.split('.').pop()
-        const path = `${agentId}/${slug}/video.${ext}`
-
-        const { error: videoError } = await supabase.storage
-          .from('listing-videos')
-          .upload(path, video, { upsert: true })
-
-        if (videoError) throw new Error(`Video upload failed: ${videoError.message}`)
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('listing-videos')
-          .getPublicUrl(path)
-
-        videoUrl = publicUrl
-      }
-
-      setUploadProgress('Saving listing...')
-
-      const { data: listing, error: insertError } = await supabase
-        .from('listings')
-        .insert({
-          agent_id:        agentId,
-          name,
-          description,
-          price:           parseInt(price),
-          rent_duration:   finalDuration,
-          room_type:       roomType,
-          rooms_available: parseInt(rooms),
-          area:            finalArea,
-          distance_tag:    distance,
-          facilities,
-          whatsapp_number: whatsapp,
-          video_url:       videoUrl,
-          address:         address || null,
-          status:          'pending',
-          slug,
-        })
-        .select()
-        .single()
-
-      if (insertError) throw new Error(insertError.message)
-
-      const photoRecords = photoUrls.map((url, i) => ({
-        listing_id: listing.id,
-        photo_url:  url,
-        is_cover:   i === 0,
-        sort_order: i,
-      }))
-
-      await supabase.from('listing_photos').insert(photoRecords)
-
-      router.push('/agent/dashboard?created=true')
-
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
-      setLoading(false)
-      setUploadProgress('')
-    }
-  }
+  const resetFilters = () => { setRoomType('All'); setMaxPrice(1000000); setSearch('') }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
 
+      {showAuthModal && <AuthGateModal onClose={() => setShowAuthModal(false)} />}
+
       <div style={{ backgroundColor: '#034338' }} className="px-4 sm:px-6 py-10">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-sm font-semibold mb-4 hover:underline"
-            style={{ color: 'rgba(255,255,255,0.65)' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to dashboard
-          </button>
-          <h1 className="text-2xl sm:text-3xl font-black text-white">Add new listing</h1>
-          <p className="text-sm font-medium mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            Fill in your hostel details. Your listing will be reviewed before going live.
+        <div className="max-w-6xl mx-auto">
+          <h1 className="text-2xl sm:text-3xl font-black text-white mb-1">Hostels near FUOYE</h1>
+          <p style={{ color: 'rgba(255,255,255,0.65)' }} className="text-sm font-medium">
+            {loadingData ? 'Loading...' : `${filtered.length} listing${filtered.length !== 1 ? 's' : ''} available`}
           </p>
+          <div className="mt-5 bg-white rounded-xl flex items-center gap-3 px-4 py-3 max-w-lg">
+            <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search by area or hostel name..."
+              className="flex-1 text-sm outline-none bg-transparent text-[#0A2A23] placeholder-gray-400" />
+            {search && (
+              <button onClick={() => setSearch('')} className="text-gray-400 hover:text-gray-600 cursor-pointer">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        <div className="flex gap-8">
 
-          {error && (
-            <div className="px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
-              {error}
-            </div>
-          )}
-
-          {/* ── Section 1: Basic info ── */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-5" style={{ color: '#0A2A23' }}>Basic information</h2>
-
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                  Hostel name <span style={{ color: '#DC2626' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="e.g. Sunview Hostel"
-                  required
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                  onFocus={e => e.target.style.borderColor = '#034338'}
-                  onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                  Description <span style={{ color: '#DC2626' }}>*</span>
-                </label>
-                <textarea
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  placeholder="Describe the hostel — location highlights, room details, what makes it good for students..."
-                  required
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors resize-none"
-                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                  onFocus={e => e.target.style.borderColor = '#034338'}
-                  onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                />
-              </div>
-
-              {/* Price + Rent duration */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                    Price per room (₦) <span style={{ color: '#DC2626' }}>*</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={price}
-                    onChange={e => setPrice(e.target.value)}
-                    placeholder="e.g. 120000"
-                    required
-                    min={1000}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                    onFocus={e => e.target.style.borderColor = '#034338'}
-                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                    Rent duration <span style={{ color: '#DC2626' }}>*</span>
-                  </label>
-                  <select
-                    value={rentDuration}
-                    onChange={e => setRentDuration(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors cursor-pointer"
-                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                    onFocus={e => e.target.style.borderColor = '#034338'}
-                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                  >
-                    {RENT_DURATIONS.map(d => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {rentDuration === 'other' && (
-                <div>
-                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                    Specify duration <span style={{ color: '#DC2626' }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={customDuration}
-                    onChange={e => setCustomDuration(e.target.value)}
-                    placeholder="e.g. 3 months, per semester"
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                    onFocus={e => e.target.style.borderColor = '#034338'}
-                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                  />
-                </div>
-              )}
-
-              {/* Room type + Rooms available */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                    Room type <span style={{ color: '#DC2626' }}>*</span>
-                  </label>
-                  <select
-                    value={roomType}
-                    onChange={e => setRoomType(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors cursor-pointer"
-                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                    onFocus={e => e.target.style.borderColor = '#034338'}
-                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                  >
-                    {ROOM_TYPES.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                    Rooms available <span style={{ color: '#DC2626' }}>*</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={rooms}
-                    onChange={e => setRooms(e.target.value)}
-                    min={0}
-                    max={100}
-                    required
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                    onFocus={e => e.target.style.borderColor = '#034338'}
-                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                  />
-                  <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
-                    Set to 0 to mark as fully occupied.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Section 2: Location ── */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-5" style={{ color: '#0A2A23' }}>Location</h2>
-
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                  Area / Street <span style={{ color: '#DC2626' }}>*</span>
-                </label>
-                <select
-                  value={area}
-                  onChange={e => setArea(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors cursor-pointer"
-                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                  onFocus={e => e.target.style.borderColor = '#034338'}
-                  onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                >
-                  {FUOYE_AREAS.map(a => (
-                    <option key={a} value={a}>{a}</option>
+          {/* Sidebar */}
+          <aside className="hidden lg:block w-56 shrink-0">
+            <div className="bg-white rounded-2xl p-5 sticky top-24 shadow-sm">
+              <h2 className="font-black text-sm mb-5" style={{ color: '#0A2A23' }}>Filters</h2>
+              <div className="mb-6">
+                <p className="text-xs font-bold mb-3" style={{ color: '#4B6B62' }}>ROOM TYPE</p>
+                <div className="flex flex-col gap-1.5">
+                  {ROOM_TYPES.map(type => (
+                    <button key={type} onClick={() => setRoomType(type)}
+                      className="text-left text-sm px-3 py-2 rounded-lg font-medium transition-all cursor-pointer"
+                      style={roomType === type ? { backgroundColor: '#034338', color: '#FFFFFF' } : { color: '#3D6058' }}>
+                      {type}
+                    </button>
                   ))}
-                </select>
-              </div>
-
-              {area === 'Other' && (
-                <div>
-                  <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                    Specify area <span style={{ color: '#DC2626' }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={customArea}
-                    onChange={e => setCustomArea(e.target.value)}
-                    placeholder="Enter the street or area name"
-                    required
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                    style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                    onFocus={e => e.target.style.borderColor = '#034338'}
-                    onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                  />
                 </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                  Distance from FUOYE main gate <span style={{ color: '#DC2626' }}>*</span>
-                </label>
-                <select
-                  value={distance}
-                  onChange={e => setDistance(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors cursor-pointer"
-                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                  onFocus={e => e.target.style.borderColor = '#034338'}
-                  onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                >
-                  {DISTANCE_OPTIONS.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
               </div>
-
-              <div>
-                <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                  Exact address <span className="font-normal" style={{ color: '#4B6B62' }}>(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={e => setAddress(e.target.value)}
-                  placeholder="e.g. No. 12 Adeyemi Street, behind First Bank"
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                  onFocus={e => e.target.style.borderColor = '#034338'}
-                  onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-                />
-                <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
-                  Helps students find the hostel more easily.
-                </p>
+              <div className="mb-6">
+                <p className="text-xs font-bold mb-3" style={{ color: '#4B6B62' }}>MAX PRICE / YEAR</p>
+                <p className="text-lg font-black mb-3" style={{ color: '#034338' }}>₦{maxPrice.toLocaleString()}</p>
+                <input type="range" min={40000} max={1000000} step={5000} value={maxPrice}
+                  onChange={e => setMaxPrice(Number(e.target.value))} className="w-full accent-[#37D76A] cursor-pointer" />
+                <div className="flex justify-between text-xs mt-1" style={{ color: '#4B6B62' }}>
+                  <span>₦40k</span><span>₦1M</span>
+                </div>
               </div>
+              <button onClick={resetFilters}
+                className="w-full text-sm font-bold py-2 rounded-lg border transition-colors cursor-pointer hover:bg-gray-50"
+                style={{ color: '#034338', borderColor: '#E8EDEB' }}>
+                Reset filters
+              </button>
             </div>
-          </div>
+          </aside>
 
-          {/* ── Section 3: Facilities ── */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-2" style={{ color: '#0A2A23' }}>Facilities</h2>
-            <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>Select all that apply</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-5 gap-3">
+              <button onClick={() => setShowFilters(!showFilters)}
+                className="lg:hidden flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-xl bg-white shadow-sm cursor-pointer"
+                style={{ color: '#034338' }}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 010 2H4a1 1 0 01-1-1zM6 10h12M9 16h6" />
+                </svg>
+                Filters
+                {(roomType !== 'All' || maxPrice < 1000000) && (
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#37D76A' }} />
+                )}
+              </button>
+              <select value={sort} onChange={e => setSort(e.target.value)}
+                className="ml-auto text-sm font-semibold px-4 py-2 rounded-xl bg-white shadow-sm outline-none cursor-pointer"
+                style={{ color: '#034338' }}>
+                {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {FACILITIES.map(f => (
-                <button
-                  type="button"
-                  key={f}
-                  onClick={() => toggleFacility(f)}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all border"
-                  style={{
-                    borderColor: facilities.includes(f) ? '#034338' : '#E8EDEB',
-                    backgroundColor: facilities.includes(f) ? '#F0FAF4' : '#FFFFFF',
-                    color: facilities.includes(f) ? '#034338' : '#4B6B62',
-                  }}
-                >
-                  <div
-                    className="w-4 h-4 rounded flex items-center justify-center shrink-0 border"
-                    style={{
-                      borderColor: facilities.includes(f) ? '#034338' : '#D1D5DB',
-                      backgroundColor: facilities.includes(f) ? '#034338' : 'transparent',
-                    }}
-                  >
-                    {facilities.includes(f) && (
-                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  {f}
+            {showFilters && (
+              <div className="lg:hidden bg-white rounded-2xl p-5 mb-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-black text-sm" style={{ color: '#0A2A23' }}>Filters</h2>
+                  <button onClick={() => setShowFilters(false)} className="cursor-pointer" style={{ color: '#4B6B62' }}>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-xs font-bold mb-3" style={{ color: '#4B6B62' }}>ROOM TYPE</p>
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {ROOM_TYPES.map(type => (
+                    <button key={type} onClick={() => setRoomType(type)}
+                      className="text-sm px-4 py-2 rounded-full font-semibold transition-all cursor-pointer"
+                      style={roomType === type ? { backgroundColor: '#034338', color: '#FFFFFF' } : { backgroundColor: '#F4F6F5', color: '#3D6058' }}>
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs font-bold mb-2" style={{ color: '#4B6B62' }}>MAX PRICE: ₦{maxPrice.toLocaleString()}/yr</p>
+                <input type="range" min={40000} max={1000000} step={5000} value={maxPrice}
+                  onChange={e => setMaxPrice(Number(e.target.value))} className="w-full accent-[#37D76A] cursor-pointer" />
+                <button onClick={resetFilters} className="mt-4 w-full text-sm font-bold py-2 rounded-lg border cursor-pointer"
+                  style={{ color: '#034338', borderColor: '#E8EDEB' }}>Reset filters</button>
+              </div>
+            )}
+
+            <div className="hidden lg:flex flex-wrap gap-2 mb-6">
+              {ROOM_TYPES.map(type => (
+                <button key={type} onClick={() => setRoomType(type)}
+                  className="text-sm px-4 py-1.5 rounded-full font-semibold transition-all cursor-pointer"
+                  style={roomType === type ? { backgroundColor: '#034338', color: '#FFFFFF' } : { backgroundColor: '#FFFFFF', color: '#3D6058' }}>
+                  {type}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* ── Section 4: Photos ── */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>
-              Photos <span style={{ color: '#DC2626' }}>*</span>
-            </h2>
-            <p className="text-xs font-medium mb-1" style={{ color: '#4B6B62' }}>
-              Upload up to 6 photos. First photo is the cover. Max 5MB each (JPG, PNG, WebP).
-            </p>
-            <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>
-              Include photos of: the building exterior, compound/environment, living area, kitchen, and bathroom.
-            </p>
+            {(search || roomType !== 'All' || maxPrice < 1000000) && !loadingData && (
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="text-xs font-bold" style={{ color: '#4B6B62' }}>Active:</span>
+                {search && (
+                  <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: '#E8F5EE', color: '#034338' }}>
+                    "{search}" <button onClick={() => setSearch('')} className="cursor-pointer">×</button>
+                  </span>
+                )}
+                {roomType !== 'All' && (
+                  <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: '#E8F5EE', color: '#034338' }}>
+                    {roomType} <button onClick={() => setRoomType('All')} className="cursor-pointer">×</button>
+                  </span>
+                )}
+                {maxPrice < 1000000 && (
+                  <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: '#E8F5EE', color: '#034338' }}>
+                    Max ₦{maxPrice.toLocaleString()} <button onClick={() => setMaxPrice(1000000)} className="cursor-pointer">×</button>
+                  </span>
+                )}
+              </div>
+            )}
 
-            {photoPreviews.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {photoPreviews.map((src, i) => (
-                  <div key={i} className="relative aspect-square rounded-xl overflow-hidden">
-                    <img src={src} alt="" className="w-full h-full object-cover" />
-                    {i === 0 && (
-                      <div className="absolute top-1.5 left-1.5">
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#37D76A', color: '#034338' }}>
-                          Cover
-                        </span>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removePhoto(i)}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center bg-black/60 text-white hover:bg-black/80 transition-colors"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+            {!isLoggedIn && !loadingData && allListings.length > 0 && (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 text-sm font-medium" style={{ backgroundColor: '#E8F5EE' }}>
+                <svg className="w-4 h-4 shrink-0" style={{ color: '#034338' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span style={{ color: '#034338' }}>
+                  <Link href="/register" className="font-bold underline">Create a free account</Link> or{' '}
+                  <Link href="/login" className="font-bold underline">log in</Link> to view hostel details and contact agents.
+                </span>
+              </div>
+            )}
+
+            {loadingData ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-sm animate-pulse">
+                    <div className="h-44" style={{ backgroundColor: '#E8EDEB' }} />
+                    <div className="p-4">
+                      <div className="h-4 rounded mb-2" style={{ backgroundColor: '#E8EDEB', width: '70%' }} />
+                      <div className="h-3 rounded" style={{ backgroundColor: '#E8EDEB', width: '50%' }} />
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
-
-            {photos.length < 6 && (
-              <>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  className="hidden"
-                  onChange={handlePhotoSelect}
-                />
-                <button
-                  type="button"
-                  onClick={() => photoInputRef.current?.click()}
-                  className="w-full py-4 rounded-xl border-2 border-dashed text-sm font-semibold transition-colors hover:border-[#034338] hover:bg-[#F0FAF4]"
-                  style={{ borderColor: photos.length === 0 ? '#DC2626' : '#E8EDEB', color: '#4B6B62' }}
-                >
-                  + Add photos ({photos.length}/6)
-                </button>
-                {photos.length === 0 && (
-                  <p className="text-xs font-medium mt-1.5" style={{ color: '#DC2626' }}>
-                    At least 1 photo is required.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* ── Section 5: Video ── */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>
-              Video tour <span className="text-xs font-medium" style={{ color: '#4B6B62' }}>(optional)</span>
-            </h2>
-            <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>
-              Upload one short video walkthrough. Max 50MB (MP4, WebM, MOV).
-            </p>
-
-            {videoPreview ? (
-              <div className="relative rounded-xl overflow-hidden">
-                <video src={videoPreview} controls className="w-full rounded-xl" style={{ maxHeight: '200px' }} />
-                <button
-                  type="button"
-                  onClick={removeVideo}
-                  className="mt-2 text-xs font-bold hover:underline"
-                  style={{ color: '#DC2626' }}
-                >
-                  Remove video
+            ) : filtered.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#F4F6F5' }}>
+                  <svg className="w-7 h-7" style={{ color: '#4B6B62' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <h3 className="font-bold text-base mb-1" style={{ color: '#0A2A23' }}>No hostels found</h3>
+                <p className="text-sm mb-4" style={{ color: '#4B6B62' }}>Try adjusting your filters or search term.</p>
+                <button onClick={resetFilters} className="text-sm font-bold px-5 py-2 rounded-full text-white cursor-pointer" style={{ backgroundColor: '#034338' }}>
+                  Clear filters
                 </button>
               </div>
             ) : (
-              <>
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/mp4,video/webm,video/quicktime"
-                  className="hidden"
-                  onChange={handleVideoSelect}
-                />
-                <button
-                  type="button"
-                  onClick={() => videoInputRef.current?.click()}
-                  className="w-full py-4 rounded-xl border-2 border-dashed text-sm font-semibold transition-colors hover:border-[#034338] hover:bg-[#F0FAF4]"
-                  style={{ borderColor: '#E8EDEB', color: '#4B6B62' }}
-                >
-                  + Upload video tour
-                </button>
-              </>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filtered.map(listing => {
+                  const cover = listing.listing_photos?.find(p => p.is_cover) || listing.listing_photos?.[0]
+                  const label = roomTypeMap[listing.room_type] || listing.room_type
+                  const badge = roomTypeBadge[label] || { bg: '#F4F6F5', text: '#4B6B62' }
+                  return (
+                    <Link href={`/listings/${listing.slug}`} key={listing.id}
+                      onClick={handleCardClick}
+                      className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                      <div className="h-44 relative overflow-hidden" style={{ backgroundColor: '#1a4a3a' }}>
+                        {cover ? (
+                          <img src={cover.photo_url} alt={listing.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                            <svg className="w-20 h-20 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                            </svg>
+                          </div>
+                        )}
+                        {!isLoggedIn && (
+                          <div className="absolute inset-0 flex items-end justify-center pb-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(3,67,56,0.9)', color: '#37D76A' }}>
+                              Sign in to view details
+                            </span>
+                          </div>
+                        )}
+                        <div className="absolute top-3 left-3">
+                          <span className="text-xs font-black px-3 py-1.5 rounded-full" style={{ backgroundColor: '#37D76A', color: '#034338' }}>
+                            ₦{listing.price.toLocaleString()}/yr
+                          </span>
+                        </div>
+                        <div className="absolute top-3 right-3">
+                          <span className="bg-black/40 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                            {listing.rooms_available} room{listing.rooms_available !== 1 ? 's' : ''} left
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h3 className="font-bold text-base leading-snug" style={{ color: '#0A2A23' }}>{listing.name}</h3>
+                          <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: badge.bg, color: badge.text }}>{label}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#4B6B62' }}>
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          {listing.area} · {listing.distance_tag}
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
             )}
           </div>
-
-          {/* ── Section 6: Contact ── */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>Contact</h2>
-            <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>
-              Students will use this number to reach you on WhatsApp.
-            </p>
-            <div>
-              <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                WhatsApp number <span style={{ color: '#DC2626' }}>*</span>
-              </label>
-              <input
-                type="tel"
-                value={whatsapp}
-                onChange={e => setWhatsapp(e.target.value)}
-                placeholder="080XXXXXXXX"
-                required
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
-                onFocus={e => e.target.style.borderColor = '#034338'}
-                onBlur={e => e.target.style.borderColor = '#E8EDEB'}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 rounded-xl font-black text-white text-sm transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: '#034338' }}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-                {uploadProgress || 'Submitting...'}
-              </span>
-            ) : (
-              'Submit listing for review'
-            )}
-          </button>
-
-          <p className="text-center text-xs font-medium pb-4" style={{ color: '#4B6B62' }}>
-            Your listing will be reviewed and activated within 24 hours.
-          </p>
-        </form>
+        </div>
       </div>
+
+      <footer style={{ backgroundColor: '#034338' }} className="mt-16 py-10 px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
+          <p className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>© 2026 Hostel Finder. All rights reserved.</p>
+          <div className="flex items-center gap-6 text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>
+            {[{ label: 'Browse', href: '/listings' }, { label: 'List a hostel', href: '/register' }, { label: 'About', href: '/about' }, { label: 'Contact', href: '/contact' }].map(link => (
+              <Link key={link.href} href={link.href} className="hover:text-white transition-colors">{link.label}</Link>
+            ))}
+          </div>
+        </div>
+      </footer>
     </div>
+  )
+}
+
+export default function ListingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F4F6F5' }}>
+        <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
+      </div>
+    }>
+      <ListingsContent />
+    </Suspense>
   )
 }
