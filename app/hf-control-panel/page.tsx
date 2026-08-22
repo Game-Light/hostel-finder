@@ -49,6 +49,7 @@ export default function AdminPage() {
   const [tab, setTab]                     = useState<'listings' | 'agents' | 'students'>('listings')
   const [listings, setListings]           = useState<Listing[]>([])
   const [users, setUsers]                 = useState<User[]>([])
+  const [conversions, setConversions] = useState([])
   const [loading, setLoading]             = useState(false)
   const [actionId, setActionId]           = useState<string | null>(null)
   const [statusFilter, setStatusFilter]   = useState<'pending' | 'active' | 'inactive' | 'all'>('pending')
@@ -79,9 +80,10 @@ export default function AdminPage() {
         headers: { 'x-admin-auth': adminPassword },
       })
       if (res.ok) {
-        const { listings: l, users: u } = await res.json()
+        const { listings: l, users: u, conversions: c } = await res.json()
         setListings(l)
         setUsers(u)
+        setConversions(c)
       }
     } catch {}
     setLoading(false)
@@ -226,6 +228,7 @@ export default function AdminPage() {
             { label: 'Active listings',  value: activeCount,  urgent: false },
             { label: 'Total views',      value: totalViews,   urgent: false },
             { label: 'WhatsApp clicks',  value: totalClicks,  urgent: false },
+            { label: 'Confirmed conversions', value: conversions.length, urgent: false },
           ].map(stat => (
             <div key={stat.label} className="bg-white rounded-2xl p-4 shadow-sm text-center">
               <div className="text-2xl font-black" style={{ color: stat.urgent ? '#DC2626' : '#034338' }}>{stat.value}</div>

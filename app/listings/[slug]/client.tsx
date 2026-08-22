@@ -1,5 +1,6 @@
 'use client'
 
+import ConversionPrompt from '@/components/ConversionPrompt'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -122,12 +123,22 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
   }
 
   const handleWhatsAppClick = async () => {
-  if (!listing?.id) return
-  await supabase
-    .from('listings')
-    .update({ whatsapp_clicks: (listing.whatsapp_clicks || 0) + 1 })
-    .eq('id', listing.id)
-}
+    if (!listing?.id) return
+
+    // Track the click
+    await supabase
+      .from('listings')
+      .update({ whatsapp_clicks: (listing.whatsapp_clicks || 0) + 1 })
+      .eq('id', listing.id)
+
+    // Store pending conversion for follow-up prompt
+    localStorage.setItem('hf_pending_conversion', JSON.stringify({
+      listingId: listing.id,
+      listingName: listing.name,
+      agentName: listing.users?.full_name || 'Agent',
+      clickedAt: Date.now(),
+    }))
+  }
 
 const handleShare = async () => {
   const url = window.location.href
@@ -151,6 +162,7 @@ const handleShare = async () => {
   if (loading) return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
+      <ConversionPrompt />
       <div className="flex items-center justify-center h-64">
         <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: '#034338', borderTopColor: 'transparent' }} />
       </div>
@@ -160,6 +172,7 @@ const handleShare = async () => {
   if (fetchError) return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
+      <ConversionPrompt />
       <div className="flex items-center justify-center min-h-[60vh] px-4">
         <div className="text-center max-w-sm">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ backgroundColor: '#FEE2E2' }}>
@@ -191,6 +204,7 @@ const handleShare = async () => {
   if (notFound || !listing) return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
+      <ConversionPrompt />
       <div className="flex items-center justify-center min-h-[60vh] px-4">
         <div className="text-center max-w-sm">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ backgroundColor: '#F4F6F5' }}>
@@ -225,6 +239,7 @@ const handleShare = async () => {
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F4F6F5' }}>
       <Navbar />
+      <ConversionPrompt />
 
       {lightbox && photos[activeMedia] && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center"

@@ -19,18 +19,22 @@ export async function GET(req: NextRequest) {
 
   const supabase = getAdminClient()
 
-    const [{ data: listings }, { data: users }] = await Promise.all([
-    supabase
-      .from('listings')
-      .select('id, name, area, price, room_type, status, created_at, slug, views, whatsapp_clicks, users(full_name, email, phone)')
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('users')
-      .select('id, full_name, email, phone, role, created_at, is_suspended')
-      .order('created_at', { ascending: false }),
-  ])
+    const [{ data: listings }, { data: users }, { data: conversions }] = await Promise.all([
+      supabase
+        .from('listings')
+        .select('id, name, area, price, room_type, status, created_at, slug, views, whatsapp_clicks, users(full_name, email, phone)')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('users')
+        .select('id, full_name, email, phone, role, created_at, is_suspended')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('conversions')
+        .select('id, confirmed, listing_id')
+        .eq('confirmed', true),
+    ])
 
-  return NextResponse.json({ listings: listings || [], users: users || [] })
+    return NextResponse.json({ listings: listings || [], users: users || [], conversions: conversions || [] })
 }
 
 export async function PATCH(req: NextRequest) {
