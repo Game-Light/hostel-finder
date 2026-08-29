@@ -94,14 +94,30 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
   }, [fetchListing])
 
   useEffect(() => {
-  if (!listing?.id) return
+    if (!listing?.id) return;
 
-  const viewedKey = `viewed_${listing.id}`
-  if (sessionStorage.getItem(viewedKey)) return
+    const storageKey = `hf_viewed_${listing.id}`;
+    const last = localStorage.getItem(storageKey);
+    const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h — tune as needed
 
-  sessionStorage.setItem(viewedKey, '1')
-  supabase.rpc('increment_listing_views', { listing_id: listing.id })
-}, [listing?.id])
+    // Already counted recently — don't even start the timer
+    if (last && Date.now() - Number(last) < DEDUPE_WINDOW_MS) return;
+
+    const timer = setTimeout(async () => {
+      const { error } = await supabase.rpc('increment_listing_views', {
+        listing_id: listing.id,
+      });
+
+      if (error) {
+        console.error('View count failed:', error);
+        return; // don't mark as viewed — will retry on next visit
+      }
+
+      localStorage.setItem(storageKey, Date.now().toString());
+    }, 5000);
+
+    return () => clearTimeout(timer); // navigated away before 5s = no count
+  }, [listing?.id]);
 
   useEffect(() => {
     if (!lightbox) return

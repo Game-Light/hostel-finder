@@ -31,6 +31,10 @@ export default function AgentDashboardPage() {
   const [deletingId, setDeletingId]   = useState<string | null>(null)
   const [togglingId, setTogglingId]   = useState<string | null>(null)
   const [successMsg, setSuccessMsg]   = useState('')
+  // NEW: separate toast state for the video-upload-failed warning.
+  // Kept apart from successMsg so it can use a different color (amber, not green)
+  // and doesn't get overwritten/cleared by the success message's timeout.
+  const [warningMsg, setWarningMsg]   = useState('')
   const [fetchError, setFetchError] = useState(false)
   const [showPhoneModal, setShowPhoneModal] = useState(false)
   const [phoneInput, setPhoneInput]         = useState('')
@@ -44,10 +48,24 @@ export default function AgentDashboardPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
-      if (url.searchParams.get('created') === 'true') {
+      const created = url.searchParams.get('created') === 'true'
+      const videoFailed = url.searchParams.get('videoFailed') === 'true'
+
+      if (created) {
         setSuccessMsg('Listing submitted! It will go live after review.')
-        window.history.replaceState({}, '', '/agent/dashboard')
         setTimeout(() => setSuccessMsg(''), 5000)
+      }
+
+      // NEW: if the new-listing page redirected with videoFailed=true,
+      // show a separate amber warning toast — the listing itself still saved fine.
+      if (videoFailed) {
+        setWarningMsg('Your listing was posted, but the video failed to upload. You can add it later by editing the listing.')
+        setTimeout(() => setWarningMsg(''), 7000) // stays a bit longer than the success toast
+      }
+
+      // Clean the URL either way so refreshing doesn't re-trigger the toasts
+      if (created || videoFailed) {
+        window.history.replaceState({}, '', '/agent/dashboard')
       }
     }
   }, [])
@@ -182,6 +200,21 @@ export default function AgentDashboardPage() {
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-bold text-white"
           style={{ backgroundColor: '#034338' }}>
           ✓ {successMsg}
+        </div>
+      )}
+
+      {/* NEW: warning toast for video upload failures — amber, sits below the
+          green success toast if both fire at once (listing created + video failed) */}
+      {warningMsg && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-bold"
+          style={{
+            top: successMsg ? '5.5rem' : '5rem', // shift down if success toast is also showing
+            backgroundColor: '#FEF3C7',
+            color: '#92400E',
+          }}
+        >
+          ⚠ {warningMsg}
         </div>
       )}
 

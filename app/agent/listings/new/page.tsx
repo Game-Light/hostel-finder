@@ -69,6 +69,9 @@ export default function NewListingPage() {
 
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
+  // NEW: separate "warning" state — for non-fatal issues (like video failing)
+  // that shouldn't block submission but the agent should still know about.
+  const [warning, setWarning]         = useState('')
   const [uploadProgress, setUploadProgress] = useState('')
 
   useEffect(() => {
@@ -132,6 +135,7 @@ export default function NewListingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setWarning('')
 
     if (photos.length === 0) {
       setError('Please upload at least one photo of the hostel.')
@@ -151,6 +155,7 @@ export default function NewListingPage() {
       const finalArea = area === 'Other' ? customArea : area
       const finalDuration = rentDuration === 'other' ? customDuration.trim() : rentDuration
 
+      // ── PHOTOS: required, so a failure here still stops the whole submission ──
       setUploadProgress('Uploading photos...')
       const photoUrls: string[] = []
 
@@ -163,7 +168,14 @@ export default function NewListingPage() {
           .from('listing-photos')
           .upload(path, file, { upsert: true })
 
-        if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`)
+        if (uploadError) {
+          // Log the real technical error for us (visible in console + Sentry),
+          // but throw a plain message the agent can actually act on.
+          console.error('Photo upload error:', uploadError)
+          throw new Error(
+            `We couldn't upload photo ${i + 1}. Check your network and try again — your other details are still filled in.`
+          )
+        }
 
         const { data: { publicUrl } } = supabase.storage
           .from('listing-photos')
@@ -172,24 +184,33 @@ export default function NewListingPage() {
         photoUrls.push(publicUrl)
       }
 
+      // ── VIDEO: optional, so a failure here should NOT kill the listing ──
+      // Instead of throwing, we catch it locally, skip the video, and
+      // warn the agent after the listing is saved successfully.
       let videoUrl: string | null = null
 
       if (video) {
         setUploadProgress('Uploading video...')
-        const ext = video.name.split('.').pop()
-        const path = `${agentId}/${slug}/video.${ext}`
+        try {
+          const ext = video.name.split('.').pop()
+          const path = `${agentId}/${slug}/video.${ext}`
 
-        const { error: videoError } = await supabase.storage
-          .from('listing-videos')
-          .upload(path, video, { upsert: true })
+          const { error: videoError } = await supabase.storage
+            .from('listing-videos')
+            .upload(path, video, { upsert: true })
 
-        if (videoError) throw new Error(`Video upload failed: ${videoError.message}`)
+          if (videoError) throw videoError
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('listing-videos')
-          .getPublicUrl(path)
+          const { data: { publicUrl } } = supabase.storage
+            .from('listing-videos')
+            .getPublicUrl(path)
 
-        videoUrl = publicUrl
+          videoUrl = publicUrl
+        } catch (videoErr) {
+          // Don't rethrow — log it and move on without the video.
+          console.error('Video upload failed, continuing without it:', videoErr)
+          setWarning('Your listing was posted, but the video failed to upload — check your network and add it later from your dashboard.')
+        }
       }
 
       setUploadProgress('Saving listing...')
@@ -216,7 +237,10 @@ export default function NewListingPage() {
         .select()
         .single()
 
-      if (insertError) throw new Error(insertError.message)
+      if (insertError) {
+        console.error('Listing insert error:', insertError)
+        throw new Error('We saved your photos, but could not save the listing details. Please try submitting again.')
+      }
 
       const photoRecords = photoUrls.map((url, i) => ({
         listing_id: listing.id,
@@ -227,10 +251,19 @@ export default function NewListingPage() {
 
       await supabase.from('listing_photos').insert(photoRecords)
 
-      router.push('/agent/dashboard?created=true')
+      // If a video warning was set above, carry it into the dashboard via query param
+      // so the agent still sees it after redirect (state is lost on navigation).
+      const redirectUrl = warning
+        ? '/agent/dashboard?created=true&videoFailed=true'
+        : '/agent/dashboard?created=true'
+
+      router.push(redirectUrl)
 
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      // Any error here is one we've already turned into a plain message above.
+      // Form fields (name, description, photos, etc.) are untouched — nothing
+      // in this catch block resets them, so the agent can just retry.
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please check your network and try again.')
       setLoading(false)
       setUploadProgress('')
     }
@@ -265,6 +298,15 @@ export default function NewListingPage() {
           {error && (
             <div className="px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
               {error}
+            </div>
+          )}
+
+          {/* NEW: warning banner — shown for non-fatal issues like video failure.
+              Different color (amber) from error (red) so agents can tell
+              "something's wrong, fix it" apart from "heads up, minor issue". */}
+          {warning && (
+            <div className="px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+              {warning}
             </div>
           )}
 
