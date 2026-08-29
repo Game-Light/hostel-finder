@@ -69,10 +69,13 @@ export default function NewListingPage() {
 
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
-  // NEW: separate "warning" state — for non-fatal issues (like video failing)
-  // that shouldn't block submission but the agent should still know about.
   const [warning, setWarning]         = useState('')
   const [uploadProgress, setUploadProgress] = useState('')
+
+  // NEW: ref to the submit button area, so we can scroll it into view
+  // whenever an error/warning appears — this is what actually gets the
+  // banner in front of the agent's eyes, since it now lives near the button.
+  const submitAreaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -92,6 +95,15 @@ export default function NewListingPage() {
     }
     init()
   }, [router])
+
+  // NEW: whenever error or warning changes to a non-empty value,
+  // scroll the submit area into view so the agent sees it immediately
+  // instead of it being buried at the top of a long form.
+  useEffect(() => {
+    if (error || warning) {
+      submitAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [error, warning])
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -155,7 +167,6 @@ export default function NewListingPage() {
       const finalArea = area === 'Other' ? customArea : area
       const finalDuration = rentDuration === 'other' ? customDuration.trim() : rentDuration
 
-      // ── PHOTOS: required, so a failure here still stops the whole submission ──
       setUploadProgress('Uploading photos...')
       const photoUrls: string[] = []
 
@@ -169,8 +180,6 @@ export default function NewListingPage() {
           .upload(path, file, { upsert: true })
 
         if (uploadError) {
-          // Log the real technical error for us (visible in console + Sentry),
-          // but throw a plain message the agent can actually act on.
           console.error('Photo upload error:', uploadError)
           throw new Error(
             `We couldn't upload photo ${i + 1}. Check your network and try again — your other details are still filled in.`
@@ -184,9 +193,6 @@ export default function NewListingPage() {
         photoUrls.push(publicUrl)
       }
 
-      // ── VIDEO: optional, so a failure here should NOT kill the listing ──
-      // Instead of throwing, we catch it locally, skip the video, and
-      // warn the agent after the listing is saved successfully.
       let videoUrl: string | null = null
 
       if (video) {
@@ -207,7 +213,6 @@ export default function NewListingPage() {
 
           videoUrl = publicUrl
         } catch (videoErr) {
-          // Don't rethrow — log it and move on without the video.
           console.error('Video upload failed, continuing without it:', videoErr)
           setWarning('Your listing was posted, but the video failed to upload — check your network and add it later from your dashboard.')
         }
@@ -251,8 +256,6 @@ export default function NewListingPage() {
 
       await supabase.from('listing_photos').insert(photoRecords)
 
-      // If a video warning was set above, carry it into the dashboard via query param
-      // so the agent still sees it after redirect (state is lost on navigation).
       const redirectUrl = warning
         ? '/agent/dashboard?created=true&videoFailed=true'
         : '/agent/dashboard?created=true'
@@ -260,9 +263,6 @@ export default function NewListingPage() {
       router.push(redirectUrl)
 
     } catch (err: unknown) {
-      // Any error here is one we've already turned into a plain message above.
-      // Form fields (name, description, photos, etc.) are untouched — nothing
-      // in this catch block resets them, so the agent can just retry.
       setError(err instanceof Error ? err.message : 'Something went wrong. Please check your network and try again.')
       setLoading(false)
       setUploadProgress('')
@@ -295,20 +295,8 @@ export default function NewListingPage() {
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
 
-          {error && (
-            <div className="px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
-              {error}
-            </div>
-          )}
-
-          {/* NEW: warning banner — shown for non-fatal issues like video failure.
-              Different color (amber) from error (red) so agents can tell
-              "something's wrong, fix it" apart from "heads up, minor issue". */}
-          {warning && (
-            <div className="px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
-              {warning}
-            </div>
-          )}
+          {/* NOTE: error/warning banners removed from here — moved down
+              to sit right above the submit button (see submitAreaRef below) */}
 
           {/* ── Section 1: Basic info ── */}
           <div className="bg-white rounded-2xl p-6 shadow-sm">
@@ -699,28 +687,45 @@ export default function NewListingPage() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 rounded-xl font-black text-white text-sm transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: '#034338' }}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-                {uploadProgress || 'Submitting...'}
-              </span>
-            ) : (
-              'Submit listing for review'
-            )}
-          </button>
+          {/* ── Error / Warning + Submit button — grouped together so the
+              agent sees the message right next to the action that caused it ── */}
+          <div ref={submitAreaRef} className="flex flex-col gap-3">
 
-          <p className="text-center text-xs font-medium pb-4" style={{ color: '#4B6B62' }}>
-            Your listing will be reviewed and activated within 24 hours.
-          </p>
+            {error && (
+              <div className="px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+                {error}
+              </div>
+            )}
+
+            {warning && (
+              <div className="px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                {warning}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 rounded-xl font-black text-white text-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: '#034338' }}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  {uploadProgress || 'Submitting...'}
+                </span>
+              ) : (
+                'Submit listing for review'
+              )}
+            </button>
+
+            <p className="text-center text-xs font-medium pb-4" style={{ color: '#4B6B62' }}>
+              Your listing will be reviewed and activated within 24 hours.
+            </p>
+          </div>
         </form>
       </div>
     </div>
