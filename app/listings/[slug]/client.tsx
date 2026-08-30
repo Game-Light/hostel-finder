@@ -257,26 +257,41 @@ const handleShare = async () => {
       <Navbar />
       <ConversionPrompt />
 
-      {lightbox && photos[activeMedia] && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.92)' }} onClick={() => setLightbox(false)}>
-          <button className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors z-10"
-            onClick={() => setLightbox(false)}>
+      {/* Lightbox now covers photos AND the video slide (if present).
+        isActiveVideo tells us which one to render; totalMedia (photos + video)
+        drives the counter, arrow bounds, and dot indicators. */}
+    {lightbox && (photos[activeMedia] || isActiveVideo) && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(0,0,0,0.92)' }} onClick={() => setLightbox(false)}>
+        <button className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors z-10"
+          onClick={() => setLightbox(false)}>
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/60 text-sm font-medium">
+          {activeMedia + 1} / {totalMedia}
+        </div>
+        {activeMedia > 0 && (
+          <button className="absolute left-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
+            onClick={e => { e.stopPropagation(); setActiveMedia(p => p - 1) }}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/60 text-sm font-medium">
-            {activeMedia + 1} / {photos.length}
-          </div>
-          {activeMedia > 0 && (
-            <button className="absolute left-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
-              onClick={e => { e.stopPropagation(); setActiveMedia(p => p - 1) }}>
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-          )}
+        )}
+
+        {isActiveVideo ? (
+          <video
+            src={listing.video_url!}
+            controls
+            autoPlay
+            onContextMenu={e => e.preventDefault()}
+            controlsList="nodownload"
+            className="max-w-[90vw] max-h-[85vh] rounded-xl"
+            onClick={e => e.stopPropagation()}
+          />
+        ) : (
           <img src={photos[activeMedia].photo_url} alt={listing.name}
             className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl"
             onContextMenu={e => e.preventDefault()}
@@ -284,25 +299,27 @@ const handleShare = async () => {
             style={{ userSelect: 'none', WebkitUserDrag: 'none' } as React.CSSProperties}
             onClick={e => e.stopPropagation()}
           />
-          {activeMedia < photos.length - 1 && (
-            <button className="absolute right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
-              onClick={e => { e.stopPropagation(); setActiveMedia(p => p + 1) }}>
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          )}
-          {photos.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-              {photos.map((_, i) => (
-                <button key={i} onClick={e => { e.stopPropagation(); setActiveMedia(i) }}
-                  className="w-2 h-2 rounded-full transition-all"
-                  style={{ backgroundColor: i === activeMedia ? '#37D76A' : 'rgba(255,255,255,0.4)' }} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        )}
+
+        {activeMedia < totalMedia - 1 && (
+          <button className="absolute right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors"
+            onClick={e => { e.stopPropagation(); setActiveMedia(p => p + 1) }}>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+        {totalMedia > 1 && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+            {Array.from({ length: totalMedia }).map((_, i) => (
+              <button key={i} onClick={e => { e.stopPropagation(); setActiveMedia(i) }}
+                className="w-2 h-2 rounded-full transition-all"
+                style={{ backgroundColor: i === activeMedia ? '#37D76A' : 'rgba(255,255,255,0.4)' }} />
+            ))}
+          </div>
+        )}
+      </div>
+    )}
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
         <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#4B6B62' }}>
@@ -370,11 +387,25 @@ const handleShare = async () => {
                   ))}
                   {hasVideo && (
                     <button onClick={() => setActiveMedia(photos.length)}
-                      className="shrink-0 w-16 h-12 rounded-lg flex items-center justify-center cursor-pointer transition-all"
-                      style={{ backgroundColor: '#034338', outline: isActiveVideo ? '2px solid #37D76A' : '2px solid transparent', outlineOffset: '2px' }}>
-                      <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
+                      className="shrink-0 relative w-16 h-12 rounded-lg overflow-hidden cursor-pointer transition-all"
+                      style={{ outline: isActiveVideo ? '2px solid #37D76A' : '2px solid transparent', outlineOffset: '2px' }}>
+                      {/* Real video frame instead of a flat color block.
+                          preload="metadata" + #t=0.5 forces most browsers to decode and
+                          display a frame at 0.5s as the "poster", instead of a blank/black box. */}
+                      <video
+                        src={`${listing.video_url}#t=0.5`}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-cover"
+                        style={{ backgroundColor: '#034338' }} // fallback color while frame loads
+                      />
+                      {/* Play icon overlay, centered on top of the video frame */}
+                      <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.25)' }}>
+                        <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
                     </button>
                   )}
                 </div>
