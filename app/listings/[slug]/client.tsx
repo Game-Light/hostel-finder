@@ -1,7 +1,7 @@
 'use client'
 
 import ConversionPrompt from '@/components/ConversionPrompt'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import Navbar from '@/components/Navbar'
@@ -44,6 +44,9 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
   const [copied, setCopied]           = useState(false)
   const [lightbox, setLightbox]       = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
+
+  // Tracks the X position where a touch/swipe started in the lightbox
+  const touchStartX = useRef<number | null>(null)
 
   const fetchListing = useCallback(async () => {
     setLoading(true)
@@ -122,9 +125,11 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
   useEffect(() => {
     if (!lightbox) return
     const photos = listing?.listing_photos || []
+    const hasVid = !!listing?.video_url
+    const total = photos.length + (hasVid ? 1 : 0)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setLightbox(false)
-      if (e.key === 'ArrowRight') setActiveMedia(p => Math.min(p + 1, photos.length - 1))
+      if (e.key === 'ArrowRight') setActiveMedia(p => Math.min(p + 1, total - 1))
       if (e.key === 'ArrowLeft')  setActiveMedia(p => Math.max(p - 1, 0))
     }
     window.addEventListener('keydown', onKey)
@@ -259,10 +264,32 @@ const handleShare = async () => {
 
       {/* Lightbox now covers photos AND the video slide (if present).
         isActiveVideo tells us which one to render; totalMedia (photos + video)
-        drives the counter, arrow bounds, and dot indicators. */}
+        drives the counter, arrow bounds, and dot indicators.
+        Swipe (touch) support added: onTouchStart records the start X,
+        onTouchEnd compares against the end X to decide next/prev. */}
     {lightbox && (photos[activeMedia] || isActiveVideo) && (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(0,0,0,0.92)' }} onClick={() => setLightbox(false)}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}
+        onClick={() => setLightbox(false)}
+        onTouchStart={e => {
+          touchStartX.current = e.touches[0].clientX
+        }}
+        onTouchEnd={e => {
+          if (touchStartX.current === null) return
+          const deltaX = e.changedTouches[0].clientX - touchStartX.current
+          const SWIPE_THRESHOLD = 50 // px — ignore small accidental drags
+
+          if (deltaX > SWIPE_THRESHOLD) {
+            // Swiped right → go to previous slide
+            setActiveMedia(p => Math.max(p - 1, 0))
+          } else if (deltaX < -SWIPE_THRESHOLD) {
+            // Swiped left → go to next slide
+            setActiveMedia(p => Math.min(p + 1, totalMedia - 1))
+          }
+          touchStartX.current = null
+        }}
+      >
         <button className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors z-10"
           onClick={() => setLightbox(false)}>
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
