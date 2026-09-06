@@ -1,7 +1,14 @@
+'use client'
+
 import Link from 'next/link'
 import Image from 'next/image'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-export default function SuspendedPage() {
+function SuspendedContent() {
+  const searchParams = useSearchParams()
+  const reason = searchParams.get('reason')
+
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F4F6F5' }}>
       <div style={{ backgroundColor: '#034338' }} className="px-4 py-4 border-b border-white/10">
@@ -22,12 +29,20 @@ export default function SuspendedPage() {
           </div>
 
           <h1 className="text-2xl font-black mb-2" style={{ color: '#0A2A23' }}>Account suspended</h1>
-          <p className="text-sm font-medium leading-relaxed mb-8" style={{ color: '#4B6B62' }}>
-            Your account has been suspended. If you think this is a mistake, contact us on WhatsApp and we'll look into it.
-          </p>
 
-          
-            <a href="https://wa.me/2349122781346?text=Hi, my Hostel Finder account has been suspended. Can you help?"
+          {/* NEW: show the admin's stated reason if one was provided */}
+          {reason ? (
+            <div className="rounded-xl p-4 mb-6 text-left" style={{ backgroundColor: '#FEE2E2' }}>
+              <p className="text-xs font-bold mb-1" style={{ color: '#991B1B' }}>REASON GIVEN</p>
+              <p className="text-sm font-medium" style={{ color: '#991B1B' }}>{reason}</p>
+            </div>
+          ) : (
+            <p className="text-sm font-medium leading-relaxed mb-8" style={{ color: '#4B6B62' }}>
+              Your account has been suspended. If you think this is a mistake, contact us on WhatsApp and we'll look into it.
+            </p>
+          )}
+
+          <a href="https://wa.me/2349122781346?text=Hi, my Hostel Finder account has been suspended. Can you help?"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-bold text-sm mb-3 hover:opacity-90 transition-opacity"
@@ -47,5 +62,14 @@ export default function SuspendedPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// useSearchParams requires a Suspense boundary in the App Router
+export default function SuspendedPage() {
+  return (
+    <Suspense fallback={null}>
+      <SuspendedContent />
+    </Suspense>
   )
 }

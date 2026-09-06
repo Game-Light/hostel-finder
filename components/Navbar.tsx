@@ -5,28 +5,61 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import FeedbackModal from '@/components/FeedbackModal'
 
 interface UserProfile {
   full_name: string
   role: string
   is_suspended: boolean
+  suspension_reason: string | null
 }
 
-const CACHE_KEY = 'hf_user_profile'
+interface Warning {
+  id: string
+  reason: string
+  created_at: string
+}
 
 export default function Navbar() {
   const router = useRouter()
   const [profile, setProfile]   = useState<UserProfile | null>(null)
   const [loading, setLoading]   = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+
+  // NEW: unacknowledged warnings shown as a popup when an agent visits
+  const [pendingWarnings, setPendingWarnings] = useState<Warning[]>([])
+  const [acknowledging, setAcknowledging] = useState(false)
 
   const checkSuspension = async (userId: string): Promise<UserProfile | null> => {
     const { data } = await supabase
       .from('users')
-      .select('full_name, role, is_suspended')
+      .select('full_name, role, is_suspended, suspension_reason')
       .eq('id', userId)
       .single()
     return data || null
+  }
+
+  // NEW: fetch any warnings this agent hasn't seen yet
+  const checkWarnings = async (userId: string) => {
+    const { data } = await supabase
+      .from('agent_warnings')
+      .select('id, reason, created_at')
+      .eq('agent_id', userId)
+      .eq('acknowledged', false)
+      .order('created_at', { ascending: true })
+    if (data && data.length > 0) setPendingWarnings(data)
+  }
+
+  const handleAcknowledgeWarnings = async () => {
+    setAcknowledging(true)
+    const ids = pendingWarnings.map(w => w.id)
+    await supabase
+      .from('agent_warnings')
+      .update({ acknowledged: true, acknowledged_at: new Date().toISOString() })
+      .in('id', ids)
+    setPendingWarnings([])
+    setAcknowledging(false)
   }
 
   useEffect(() => {
@@ -38,10 +71,13 @@ export default function Navbar() {
         const data = await checkSuspension(session.user.id)
         if (data?.is_suspended) {
           await supabase.auth.signOut()
-          router.push('/suspended')
+          router.push(`/suspended?reason=${encodeURIComponent(data.suspension_reason || '')}`)
           return
         }
-        if (data) setProfile(data)
+        if (data) {
+          setProfile(data)
+          if (data.role === 'agent') checkWarnings(session.user.id)
+        }
       }
       setLoading(false)
     }
@@ -59,10 +95,13 @@ export default function Navbar() {
         const data = await checkSuspension(session.user.id)
         if (data?.is_suspended) {
           await supabase.auth.signOut()
-          router.push('/suspended')
+          router.push(`/suspended?reason=${encodeURIComponent(data.suspension_reason || '')}`)
           return
         }
-        if (data) setProfile(data)
+        if (data) {
+          setProfile(data)
+          if (data.role === 'agent') checkWarnings(session.user.id)
+        }
         setLoading(false)
       }
     })
@@ -145,6 +184,15 @@ export default function Navbar() {
                         Browse Hostels
                       </Link>
                     )}
+                    <button
+                      onClick={() => { setMenuOpen(false); setFeedbackOpen(true) }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+                      style={{ color: '#0A2A23' }}>
+                      <svg className="w-4 h-4" style={{ color: '#4B6B62' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.17 0-2.29-.196-3.32-.552L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      Send feedback
+                    </button>
                   </div>
                   <div className="border-t py-1" style={{ borderColor: '#E8EDEB' }}>
                     <button onClick={handleLogout}
@@ -176,6 +224,44 @@ export default function Navbar() {
 
       {menuOpen && (
         <div className="fixed inset-0 z-[-1]" onClick={() => setMenuOpen(false)} />
+      )}
+
+      {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+
+      {/* NEW: warning popup — shown to an agent who has unacknowledged warnings,
+          on any page that renders Navbar. Blocks nothing else; just informs. */}
+      {pendingWarnings.length > 0 && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center px-4"
+          style={{ backgroundColor: 'rgba(3,67,56,0.9)' }}>
+          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: '#FEF3C7' }}>
+              <svg className="w-6 h-6" style={{ color: '#92400E' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-black mb-1" style={{ color: '#0A2A23' }}>
+              {pendingWarnings.length === 1 ? 'You have a warning' : `You have ${pendingWarnings.length} warnings`}
+            </h2>
+            <p className="text-sm font-medium mb-4" style={{ color: '#4B6B62' }}>
+              From the Hostel Finder admin team:
+            </p>
+            <div className="flex flex-col gap-2 mb-5 max-h-48 overflow-y-auto">
+              {pendingWarnings.map(w => (
+                <div key={w.id} className="rounded-xl p-3" style={{ backgroundColor: '#FEF3C7' }}>
+                  <p className="text-sm font-medium" style={{ color: '#92400E' }}>{w.reason}</p>
+                  <p className="text-xs font-medium mt-1" style={{ color: '#B45309' }}>
+                    {new Date(w.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <button onClick={handleAcknowledgeWarnings} disabled={acknowledging}
+              className="w-full py-3.5 rounded-xl font-bold text-sm text-white hover:opacity-90 transition-opacity disabled:opacity-60 cursor-pointer"
+              style={{ backgroundColor: '#034338' }}>
+              {acknowledging ? 'Please wait...' : 'I understand'}
+            </button>
+          </div>
+        </div>
       )}
     </nav>
   )

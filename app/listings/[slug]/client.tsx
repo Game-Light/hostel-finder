@@ -1,6 +1,7 @@
 'use client'
 
 import ConversionPrompt from '@/components/ConversionPrompt'
+import ReportAgentButton from '@/components/ReportAgentButton'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -14,6 +15,7 @@ interface ListingDetail {
   rooms_available: number; facilities: string[]; whatsapp_number: string
   video_url: string | null; slug: string; views: number; address: string | null
   status: string; whatsapp_clicks: number  // ← add this
+  agent_id: string // NEW
   listing_photos: Photo[]
   users: { full_name: string; phone: string | null }
 }
@@ -146,11 +148,9 @@ export default function HostelDetailClient({ slug }: { slug: string }) {
   const handleWhatsAppClick = async () => {
     if (!listing?.id) return
 
-    // Track the click
-    await supabase
-      .from('listings')
-      .update({ whatsapp_clicks: (listing.whatsapp_clicks || 0) + 1 })
-      .eq('id', listing.id)
+    // Track the click via RPC — this also logs a timestamped event row,
+    // which is what powers the admin dashboard's views/clicks-over-time chart.
+    await supabase.rpc('increment_whatsapp_click', { listing_id: listing.id })
 
     // Store pending conversion for follow-up prompt
     localStorage.setItem('hf_pending_conversion', JSON.stringify({
@@ -531,7 +531,10 @@ const handleShare = async () => {
             <div className="lg:hidden">
               <div className="rounded-2xl overflow-hidden shadow-lg mb-4" style={{ backgroundColor: '#034338' }}>
                 <div className="p-5">
-                  <p className="text-xs font-bold mb-4" style={{ color: 'rgba(255,255,255,0.55)' }}>LISTED BY</p>
+                  <div className="flex items-start justify-between mb-4">
+                    <p className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>LISTED BY</p>
+                    <ReportAgentButton agentId={listing.agent_id} agentName={listing.users?.full_name || 'this agent'} listingId={listing.id} />
+                  </div>
                   <div className="flex items-center gap-3 mb-5">
                     <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-lg shrink-0" style={{ backgroundColor: '#37D76A', color: '#034338' }}>
                       {(listing.users?.full_name || 'A').charAt(0).toUpperCase()}
@@ -621,7 +624,10 @@ const handleShare = async () => {
             <div className="sticky top-24">
               <div className="rounded-2xl overflow-hidden shadow-lg mb-4" style={{ backgroundColor: '#034338' }}>
                 <div className="p-5">
-                  <p className="text-xs font-bold mb-4" style={{ color: 'rgba(255,255,255,0.55)' }}>LISTED BY</p>
+                  <div className="flex items-start justify-between mb-4">
+                    <p className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>LISTED BY</p>
+                    <ReportAgentButton agentId={listing.agent_id} agentName={listing.users?.full_name || 'this agent'} listingId={listing.id} />
+                  </div>
                   <div className="flex items-center gap-3 mb-5">
                     <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-lg shrink-0" style={{ backgroundColor: '#37D76A', color: '#034338' }}>
                       {(listing.users?.full_name || 'A').charAt(0).toUpperCase()}
