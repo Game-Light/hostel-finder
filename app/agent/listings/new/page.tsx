@@ -1,5 +1,6 @@
 'use client'
 
+import { compressImage } from '@/lib/imageCompression'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
@@ -105,19 +106,32 @@ export default function NewListingPage() {
     }
   }, [error, warning])
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const remaining = 6 - photos.length
     const toAdd = files.slice(0, remaining)
-    setPhotos(prev => [...prev, ...toAdd])
-    toAdd.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = ev => {
-        setPhotoPreviews(prev => [...prev, ev.target?.result as string])
-      }
-      reader.readAsDataURL(file)
-    })
     e.target.value = ''
+
+    for (const file of toAdd) {
+      try {
+        const compressed = await compressImage(file)
+        setPhotos(prev => [...prev, compressed])
+        const reader = new FileReader()
+        reader.onload = ev => {
+          setPhotoPreviews(prev => [...prev, ev.target?.result as string])
+        }
+        reader.readAsDataURL(compressed)
+      } catch (err) {
+        console.error('Photo compression failed:', err)
+        // Fall back to the original file rather than blocking the upload entirely
+        setPhotos(prev => [...prev, file])
+        const reader = new FileReader()
+        reader.onload = ev => {
+          setPhotoPreviews(prev => [...prev, ev.target?.result as string])
+        }
+        reader.readAsDataURL(file)
+      }
+    }
   }
 
   const removePhoto = (index: number) => {
@@ -177,7 +191,7 @@ export default function NewListingPage() {
 
         const { error: uploadError } = await supabase.storage
           .from('listing-photos')
-          .upload(path, file, { upsert: true })
+          .upload(path, file, { upsert: true, cacheControl: '31536000' })
 
         if (uploadError) {
           console.error('Photo upload error:', uploadError)
@@ -203,7 +217,7 @@ export default function NewListingPage() {
 
           const { error: videoError } = await supabase.storage
             .from('listing-videos')
-            .upload(path, video, { upsert: true })
+            .upload(path, video, { upsert: true, cacheControl: '31536000' })
 
           if (videoError) throw videoError
 

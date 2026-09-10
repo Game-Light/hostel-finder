@@ -1,5 +1,6 @@
 'use client'
 
+import { compressImage } from '@/lib/imageCompression'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Navbar from '@/components/Navbar'
@@ -112,18 +113,28 @@ export default function EditListingPage() {
     init()
   }, [listingId, router])
 
-  const handleNewPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNewPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const currentTotal = (existingPhotos.length - removedPhotoIds.length) + newPhotos.length
     const remaining = 6 - currentTotal
     const toAdd = files.slice(0, remaining)
-    setNewPhotos(prev => [...prev, ...toAdd])
-    toAdd.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = ev => setNewPhotoPreviews(prev => [...prev, ev.target?.result as string])
-      reader.readAsDataURL(file)
-    })
     e.target.value = ''
+
+    for (const file of toAdd) {
+      try {
+        const compressed = await compressImage(file)
+        setNewPhotos(prev => [...prev, compressed])
+        const reader = new FileReader()
+        reader.onload = ev => setNewPhotoPreviews(prev => [...prev, ev.target?.result as string])
+        reader.readAsDataURL(compressed)
+      } catch (err) {
+        console.error('Photo compression failed:', err)
+        setNewPhotos(prev => [...prev, file])
+        const reader = new FileReader()
+        reader.onload = ev => setNewPhotoPreviews(prev => [...prev, ev.target?.result as string])
+        reader.readAsDataURL(file)
+      }
+    }
   }
 
   const removeExistingPhoto = (photoId: string) => {
@@ -177,7 +188,7 @@ export default function EditListingPage() {
           const file = newPhotos[i]
           const ext = file.name.split('.').pop()
           const path = `${agentId}/${listingSlug}/photo-new-${Date.now()}-${i}.${ext}`
-          const { error: upErr } = await supabase.storage.from('listing-photos').upload(path, file, { upsert: true })
+          const { error: upErr } = await supabase.storage.from('listing-photos').upload(path, file, { upsert: true, cacheControl: '31536000' })
           if (upErr) throw new Error(upErr.message)
           const { data: { publicUrl } } = supabase.storage.from('listing-photos').getPublicUrl(path)
           await supabase.from('listing_photos').insert({
@@ -208,7 +219,7 @@ export default function EditListingPage() {
         setUploadProgress('Uploading video...')
         const ext = newVideo.name.split('.').pop()
         const path = `${agentId}/${listingSlug}/video.${ext}`
-        const { error: vidErr } = await supabase.storage.from('listing-videos').upload(path, newVideo, { upsert: true })
+        const { error: vidErr } = await supabase.storage.from('listing-videos').upload(path, newVideo, { upsert: true, cacheControl: '31536000' })
         if (vidErr) throw new Error(vidErr.message)
         const { data: { publicUrl } } = supabase.storage.from('listing-videos').getPublicUrl(path)
         videoUrl = publicUrl
