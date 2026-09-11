@@ -146,9 +146,18 @@ export default function EditListingPage() {
     setNewPhotoPreviews(prev => prev.filter((_, i) => i !== index))
   }
 
+  const MAX_VIDEO_SIZE_MB = 15
+
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+      setError(`Video is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Please keep it under ${MAX_VIDEO_SIZE_MB}MB — try a shorter clip or lower your camera's video quality.`)
+      e.target.value = ''
+      return
+    }
+
     setNewVideo(file)
     setNewVideoPreview(URL.createObjectURL(file))
     e.target.value = ''
@@ -483,7 +492,7 @@ export default function EditListingPage() {
           {/* Video */}
           <div className="bg-white rounded-2xl p-6 shadow-sm">
             <h2 className="text-base font-black mb-1" style={{ color: '#0A2A23' }}>Video tour <span className="text-xs font-medium" style={{ color: '#4B6B62' }}>(optional)</span></h2>
-            <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>Max 50MB (MP4, WebM, MOV).</p>
+            <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>Max 15MB (MP4, WebM, MOV).</p>
 
             {existingVideoUrl && !removeExistingVideo && !newVideo && (
               <div className="mb-3">

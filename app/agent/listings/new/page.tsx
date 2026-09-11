@@ -139,9 +139,18 @@ export default function NewListingPage() {
     setPhotoPreviews(prev => prev.filter((_, i) => i !== index))
   }
 
+  const MAX_VIDEO_SIZE_MB = 15
+
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+      setError(`Video is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Please keep it under ${MAX_VIDEO_SIZE_MB}MB — try a shorter clip or lower your camera's video quality.`)
+      e.target.value = ''
+      return
+    }
+
     setVideo(file)
     setVideoPreview(URL.createObjectURL(file))
     e.target.value = ''
@@ -641,7 +650,7 @@ export default function NewListingPage() {
               Video tour <span className="text-xs font-medium" style={{ color: '#4B6B62' }}>(optional)</span>
             </h2>
             <p className="text-xs font-medium mb-4" style={{ color: '#4B6B62' }}>
-              Upload one short video walkthrough. Max 50MB (MP4, WebM, MOV).
+              Upload one short video walkthrough. Max 15MB (MP4, WebM, MOV).
             </p>
 
             {videoPreview ? (
