@@ -260,11 +260,17 @@ export default function AdminPage() {
   const deleteUser = async (user: User) => {
     if (!confirm(`Permanently delete ${user.full_name}'s account and all their listings?`)) return
     setActionId(user.id)
-    await fetch('/api/admin/data', {
+    const res = await fetch('/api/admin/data', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', 'x-admin-auth': adminPassword },
       body: JSON.stringify({ id: user.id, type: 'user' }),
     })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      alert(`Could not delete this account: ${body.error || 'Unknown error'}`)
+      setActionId(null)
+      return
+    }
     setUsers(prev => prev.filter(u => u.id !== user.id))
     setActionId(null)
   }
@@ -950,13 +956,18 @@ export default function AdminPage() {
                       <div className="p-5">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shrink-0"
-                              style={{
-                                backgroundColor: agent.is_suspended ? '#FEE2E2' : '#034338',
-                                color: agent.is_suspended ? '#DC2626' : '#37D76A',
-                              }}>
-                              {agent.full_name?.charAt(0).toUpperCase() || '?'}
-                            </div>
+                            {agent.avatar_url ? (
+                              <img src={agent.avatar_url} alt={agent.full_name} referrerPolicy="no-referrer"
+                                className="w-10 h-10 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shrink-0"
+                                style={{
+                                  backgroundColor: agent.is_suspended ? '#FEE2E2' : '#034338',
+                                  color: agent.is_suspended ? '#DC2626' : '#37D76A',
+                                }}>
+                                {agent.full_name?.charAt(0).toUpperCase() || '?'}
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>{agent.full_name}</p>
@@ -1131,13 +1142,18 @@ export default function AdminPage() {
                   {filteredStudents.map(student => (
                     <div key={student.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shrink-0"
-                          style={{
-                            backgroundColor: student.is_suspended ? '#FEE2E2' : '#E8F5EE',
-                            color: student.is_suspended ? '#DC2626' : '#034338',
-                          }}>
-                          {student.full_name?.charAt(0).toUpperCase() || '?'}
-                        </div>
+                        {student.avatar_url ? (
+                          <img src={student.avatar_url} alt={student.full_name} referrerPolicy="no-referrer"
+                            className="w-9 h-9 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shrink-0"
+                            style={{
+                              backgroundColor: student.is_suspended ? '#FEE2E2' : '#E8F5EE',
+                              color: student.is_suspended ? '#DC2626' : '#034338',
+                            }}>
+                            {student.full_name?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>{student.full_name}</p>

@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false }),
     supabase
       .from('users')
-      .select('id, full_name, email, phone, role, university, created_at, is_suspended, suspension_reason')
+      .select('id, full_name, email, phone, role, university, avatar_url, created_at, is_suspended, suspension_reason')
       .order('created_at', { ascending: false }),
     supabase
       .from('conversions')
@@ -216,13 +216,26 @@ export async function DELETE(req: NextRequest) {
   const { id, type } = await req.json()
   const supabase = getAdminClient()
 
-  if (type === 'user') {
-    // Delete user's listings first, then the user
+    if (type === 'user') {
+    // Clean up everything that references this user explicitly, rather than
+    // trusting cascade behavior we can't fully verify — then delete the
+    // profile row BEFORE the auth user, since deleting auth.users first can
+    // silently fail if anything still references it.
     await supabase.from('listings').delete().eq('agent_id', id)
-    const { error } = await supabase.auth.admin.deleteUser(id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    // Also delete from users table
+    await supabase.from('agent_reports').delete().eq('agent_id', id)
+    await supabase.from('agent_reports').delete().eq('reporter_id', id)
+    await supabase.from('agent_warnings').delete().eq('agent_id', id)
+    await supabase.from('platform_feedback').delete().eq('user_id', id)
+    await supabase.from('saved_listings').delete().eq('student_id', id)
+    await supabase.from('conversions').delete().eq('student_id', id)
     await supabase.from('users').delete().eq('id', id)
+
+    const { error } = await supabase.auth.admin.deleteUser(id)
+    if (error) {
+      console.error('auth.admin.deleteUser failed:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
     return NextResponse.json({ success: true })
   }
 

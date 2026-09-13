@@ -46,6 +46,7 @@ export interface User {
   role: string
   phone: string | null
   university?: string
+  avatar_url?: string | null
   created_at: string
   is_suspended: boolean
   suspension_reason?: string | null

@@ -17,70 +17,78 @@ export default function AuthCallbackPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const finish = async (userId: string, email: string | undefined, metadata: Record<string, unknown>) => {
-      // Was this Google click a signup (pending info stashed) or just a
-      // regular login? Read it once, then clear it either way.
-      const pendingRaw = localStorage.getItem('hf_pending_google_signup')
-      localStorage.removeItem('hf_pending_google_signup')
-      const pending = pendingRaw ? JSON.parse(pendingRaw) : null
+  let settled = false
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('university, role')
-        .eq('id', userId)
-        .single()
+  const finish = async (userId: string, email: string | undefined, metadata: Record<string, unknown>) => {
+    settled = true
+    const pendingRaw = localStorage.getItem('hf_pending_google_signup')
+    localStorage.removeItem('hf_pending_google_signup')
+    const pending = pendingRaw ? JSON.parse(pendingRaw) : null
 
-      // Apply anything stashed before the redirect (role, referral info) —
-      // safe to run even on a repeat login since it only ever sets real values.
-      if (pending) {
-        const updates: Record<string, unknown> = { role: pending.role }
-        if (pending.referralCode) updates.referral_code = pending.referralCode
-        if (pending.referredById) updates.referred_by = pending.referredById
-        await supabase.from('users').update(updates).eq('id', userId)
+    const { data: profile } = await supabase
+      .from('users')
+      .select('university, role')
+      .eq('id', userId)
+      .single()
 
-        if (pending.referredById) {
-          await supabase.rpc('increment_referral_points', { referrer_id: pending.referredById })
-        }
+    if (pending) {
+      const updates: Record<string, unknown> = { role: pending.role }
+      if (pending.referralCode) updates.referral_code = pending.referralCode
+      if (pending.referredById) updates.referred_by = pending.referredById
+      await supabase.from('users').update(updates).eq('id', userId)
+
+      if (pending.referredById) {
+        await supabase.rpc('increment_referral_points', { referrer_id: pending.referredById })
       }
-
-      // Google's avatar comes through as either avatar_url or picture
-      // depending on how Supabase maps it — check both, save whichever exists.
-      const avatarUrl = (metadata.avatar_url || metadata.picture) as string | undefined
-      if (avatarUrl) {
-        await supabase.from('users').update({ avatar_url: avatarUrl }).eq('id', userId)
-      }
-
-      // First time through (no school set yet) — ask for it before continuing.
-      // Returning users already have this, so they skip straight past.
-      if (!profile?.university) {
-        setNeedsSchool(true)
-        setValidSession(true)
-        setChecking(false)
-        return
-      }
-
-      const role = pending?.role || profile?.role
-      router.push(role === 'agent' ? '/agent/dashboard' : '/listings')
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        finish(session.user.id, session.user.email, session.user.user_metadata || {})
-      } else if (event !== 'SIGNED_IN') {
-        setChecking(false)
-      }
-    })
+    const avatarUrl = (metadata.avatar_url || metadata.picture) as string | undefined
+    if (avatarUrl) {
+      await supabase.from('users').update({ avatar_url: avatarUrl }).eq('id', userId)
+    }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        finish(session.user.id, session.user.email, session.user.user_metadata || {})
-      } else {
-        setChecking(false)
-      }
-    })
+    if (!profile?.university) {
+      setNeedsSchool(true)
+      setValidSession(true)
+      setChecking(false)
+      return
+    }
 
-    return () => subscription.unsubscribe()
-  }, [router])
+    const role = pending?.role || profile?.role
+
+    fetch('/api/email/welcome', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name: metadata.full_name || metadata.name, role }),
+    }).catch(() => {})
+
+    router.push(role === 'agent' ? '/agent/dashboard' : '/listings')
+  }
+
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      finish(session.user.id, session.user.email, session.user.user_metadata || {})
+    }
+  })
+
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session?.user && !settled) {
+      finish(session.user.id, session.user.email, session.user.user_metadata || {})
+    }
+  })
+
+  // Give Supabase a few seconds to finish parsing the login tokens from the
+  // URL before assuming something actually went wrong — this is what was
+  // causing the false error flash.
+  const timeout = setTimeout(() => {
+    if (!settled) setChecking(false)
+  }, 4000)
+
+  return () => {
+    subscription.unsubscribe()
+    clearTimeout(timeout)
+  }
+}, [router])
 
   const handleFinishProfile = async (e: React.FormEvent) => {
     e.preventDefault()
