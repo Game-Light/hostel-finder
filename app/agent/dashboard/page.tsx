@@ -5,18 +5,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import { supabase } from '@/lib/supabase'
+import { ROOM_TYPE_LABELS } from '@/lib/constants'
+import type { Listing } from '@/lib/types'
 
-interface Listing {
-  id: string; name: string; area: string; price: number
-  room_type: string; rooms_available: number
-  status: 'pending' | 'active' | 'inactive'
-  views: number; created_at: string; slug: string
-}
-
-const roomTypeLabel: Record<string, string> = {
-  self_contain: 'Self-contain', single: 'Single Room',
-  shared: 'Shared Room',       mini_flat: 'Mini Flat',
-}
+const roomTypeLabel = ROOM_TYPE_LABELS
 
 const statusStyle: Record<string, { bg: string; text: string; label: string }> = {
   active:   { bg: '#DCFCE7', text: '#166534', label: 'Active' },
@@ -322,8 +314,8 @@ export default function AgentDashboardPage() {
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <h3 className="font-black text-base" style={{ color: '#0A2A23' }}>{listing.name}</h3>
                       <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                        style={{ backgroundColor: statusStyle[listing.status].bg, color: statusStyle[listing.status].text }}>
-                        {statusStyle[listing.status].label}
+                        style={{ backgroundColor: statusStyle[status].bg, color: statusStyle[status].text }}>
+                        {statusStyle[status].label}
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-3 text-xs font-medium" style={{ color: '#4B6B62' }}>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendEmail } from '@/lib/email'
+import { listingApprovedEmail, listingRejectedEmail } from '@/lib/emailTemplates'
 
 function getAdminClient() {
   return createClient(
@@ -31,11 +33,11 @@ export async function GET(req: NextRequest) {
   ] = await Promise.all([
     supabase
       .from('listings')
-      .select('id, name, area, price, room_type, status, created_at, slug, views, whatsapp_clicks, users(full_name, email, phone)')
+      .select('id, name, area, price, room_type, status, created_at, slug, views, whatsapp_clicks, agent_id, users(full_name, email, phone)')
       .order('created_at', { ascending: false }),
     supabase
       .from('users')
-      .select('id, full_name, email, phone, role, created_at, is_suspended, suspension_reason')
+      .select('id, full_name, email, phone, role, university, created_at, is_suspended, suspension_reason')
       .order('created_at', { ascending: false }),
     supabase
       .from('conversions')
@@ -95,15 +97,45 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
   const supabase = getAdminClient()
 
-  // Listing status update
-  if (body.type === 'listing' || body.status) {
-    const { error } = await supabase
-      .from('listings')
-      .update({ status: body.status })
-      .eq('id', body.id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
+    // Listing status update — also emails the agent on approve/reject
+    // (not on deactivate, which is a different situation for an already-live listing)
+    if (body.type === 'listing' || body.status) {
+      const { data: listing } = await supabase
+        .from('listings')
+        .select('name, slug, users(full_name, email)')
+        .eq('id', body.id)
+        .single()
+
+      const updates: Record<string, unknown> = { status: body.status }
+      if (body.status === 'rejected') {
+        updates.rejection_reason = body.rejection_reason || null
+      }
+
+      const { error } = await supabase
+        .from('listings')
+        .update(updates)
+        .eq('id', body.id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      const agent = listing?.users as { full_name: string; email: string } | undefined
+      if (agent?.email && listing) {
+        if (body.status === 'active') {
+          await sendEmail({
+            to: agent.email,
+            subject: `Your listing "${listing.name}" is now live`,
+            html: listingApprovedEmail(agent.full_name, listing.name, listing.slug),
+          })
+        } else if (body.status === 'rejected') {
+          await sendEmail({
+            to: agent.email,
+            subject: `Your listing "${listing.name}" needs changes`,
+            html: listingRejectedEmail(agent.full_name, listing.name, body.rejection_reason || 'No reason given'),
+          })
+        }
+      }
+
+      return NextResponse.json({ success: true })
+    }
 
   // Generic user suspend/unsuspend toggle (used for students, and for
   // un-suspending agents — no reason needed to lift a suspension)

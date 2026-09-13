@@ -3,31 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import AdminActionModal from './AdminActionModal'
-
-interface Listing {
-  id: string
-  name: string
-  area: string
-  price: number
-  room_type: string
-  status: string
-  created_at: string
-  slug: string
-  views: number
-  whatsapp_clicks: number
-  users: { full_name: string; email: string; phone: string | null } | null
-}
-
-interface User {
-  id: string
-  full_name: string
-  email: string
-  role: string
-  phone: string | null
-  created_at: string
-  is_suspended: boolean
-  suspension_reason: string | null
-}
+import { ROOM_TYPE_LABELS } from '@/lib/constants'
+import type { Listing, User, Report, Feedback, Warning } from '@/lib/types'
 
 interface AgentStat {
   agent: User
@@ -35,40 +12,6 @@ interface AgentStat {
   totalViews: number
   totalClicks: number
   activeListings: number
-}
-
-interface Report {
-  id: string
-  agent_id: string
-  listing_id: string | null
-  reporter_id: string
-  reason: string
-  details: string | null
-  status: 'pending' | 'actioned' | 'dismissed'
-  admin_notes: string | null
-  created_at: string
-  resolved_at: string | null
-  agent: { full_name: string; email: string } | null
-  reporter: { full_name: string; email: string } | null
-  listing: { name: string; slug: string } | null
-}
-
-interface Feedback {
-  id: string
-  user_id: string
-  message: string
-  is_read: boolean
-  created_at: string
-  user: { full_name: string; email: string; role: string } | null
-}
-
-interface Warning {
-  id: string
-  agent_id: string
-  reason: string
-  report_id: string | null
-  created_at: string
-  acknowledged: boolean
 }
 
 interface TimeEvent {
@@ -82,10 +25,7 @@ type Tab = 'overview' | 'reports' | 'feedback' | 'listings' | 'agents' | 'studen
 type Period = 'day' | 'week' | 'month'
 type Metric = 'listings' | 'views' | 'clicks'
 
-const roomTypeLabel: Record<string, string> = {
-  self_contain: 'Self-contain', single: 'Single Room',
-  shared: 'Shared Room', mini_flat: 'Mini Flat',
-}
+const roomTypeLabel = ROOM_TYPE_LABELS
 
 const reportStatusStyle: Record<string, { bg: string; text: string }> = {
   pending:  { bg: '#FEF3C7', text: '#92400E' },
@@ -96,7 +36,7 @@ const reportStatusStyle: Record<string, { bg: string; text: string }> = {
 // ── Buckets a list of timestamped items into day/week/month periods.
 // Used for all three chart metrics (new listings, views, clicks) — each
 // just passes a different array of { created_at } items.
-function buildTrendData(items: { created_at: string }[], period: Period) {
+function buildTrendData(items: { created_at?: string }[], period: Period) {
   const now = new Date()
   const buckets: { label: string; value: number }[] = []
 
@@ -108,6 +48,7 @@ function buildTrendData(items: { created_at: string }[], period: Period) {
       const end = new Date(start)
       end.setDate(end.getDate() + 1)
       const value = items.filter(it => {
+        if (!it.created_at) return false
         const t = new Date(it.created_at).getTime()
         return t >= start.getTime() && t < end.getTime()
       }).length
@@ -122,6 +63,7 @@ function buildTrendData(items: { created_at: string }[], period: Period) {
       start.setDate(start.getDate() - 6)
       start.setHours(0, 0, 0, 0)
       const value = items.filter(it => {
+        if (!it.created_at) return false
         const t = new Date(it.created_at).getTime()
         return t >= start.getTime() && t <= end.getTime()
       }).length
@@ -132,6 +74,7 @@ function buildTrendData(items: { created_at: string }[], period: Period) {
       const start = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
       const value = items.filter(it => {
+        if (!it.created_at) return false
         const t = new Date(it.created_at).getTime()
         return t >= start.getTime() && t < end.getTime()
       }).length
@@ -189,12 +132,14 @@ const ICONS = {
   listings: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2M5 21H3m16 0h-5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 6v-3a1 1 0 011-1h0a1 1 0 011 1v3',
   agents: 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1a4 4 0 100-8 4 4 0 000 8zm6 3a4 4 0 00-8 0m8 0a4 4 0 01-8 0',
   students: 'M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.42A12.1 12.1 0 0121 12c0 2.4-.9 4.6-2.4 6.3M12 14l-6.16-3.42A12.1 12.1 0 003 12c0 2.4.9 4.6 2.4 6.3M12 14v7',
+  conversions: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
 }
 
 type ActionModalState =
   | { type: 'agent_warn'; agentId: string; agentName: string; reportId?: string }
   | { type: 'agent_suspend'; agentId: string; agentName: string; reportId?: string }
   | { type: 'report_dismiss'; reportId: string }
+  | { type: 'listing_reject'; listingId: string; listingName: string }
   | null
 
 export default function AdminPage() {
@@ -217,12 +162,15 @@ export default function AdminPage() {
 
   const [loading, setLoading]             = useState(false)
   const [actionId, setActionId]           = useState<string | null>(null)
-  const [statusFilter, setStatusFilter]   = useState<'pending' | 'active' | 'inactive' | 'all'>('pending')
+  const [statusFilter, setStatusFilter]   = useState<'pending' | 'active' | 'inactive' | 'rejected' | 'all'>('pending')
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null)   // listings expand — kept exactly as before
   const [manageAgent, setManageAgent]     = useState<string | null>(null)   // NEW: actions reveal panel
   const [period, setPeriod]               = useState<Period>('day')
   const [metric, setMetric]               = useState<Metric>('listings')    // NEW
   const [reportFilter, setReportFilter]   = useState<'pending' | 'actioned' | 'dismissed' | 'all'>('pending')
+  const [listingSearch, setListingSearch] = useState('')
+  const [agentSearch, setAgentSearch]     = useState('')
+  const [studentSearch, setStudentSearch] = useState('')
   const [actionModal, setActionModal]     = useState<ActionModalState>(null) // NEW
   const [modalSubmitting, setModalSubmitting] = useState(false)
 
@@ -350,6 +298,15 @@ export default function AdminPage() {
       }
     }
 
+    if (actionModal.type === 'listing_reject') {
+      await fetch('/api/admin/data', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-auth': adminPassword },
+        body: JSON.stringify({ id: actionModal.listingId, status: 'rejected', rejection_reason: reason }),
+      })
+      setListings(prev => prev.map(l => l.id === actionModal.listingId ? { ...l, status: 'rejected' } : l))
+    }
+
     if (actionModal.type === 'report_dismiss') {
       await fetch('/api/admin/data', {
         method: 'PATCH',
@@ -374,12 +331,20 @@ export default function AdminPage() {
     setActionId(null)
   }
 
-  const filteredListings = statusFilter === 'all' ? listings : listings.filter(l => l.status === statusFilter)
+  const filteredListings = listings
+    .filter(l => statusFilter === 'all' || l.status === statusFilter)
+    .filter(l => {
+      if (!listingSearch.trim()) return true
+      const q = listingSearch.toLowerCase()
+      return l.name.toLowerCase().includes(q)
+        || l.area.toLowerCase().includes(q)
+        || (l.users?.full_name || '').toLowerCase().includes(q)
+        || (l.users?.email || '').toLowerCase().includes(q)
+    })
   const agents   = users.filter(u => u.role === 'agent')
   const students = users.filter(u => u.role === 'student')
 
   const pendingCount = listings.filter(l => l.status === 'pending').length
-  const activeCount  = listings.filter(l => l.status === 'active').length
   const totalViews   = listings.reduce((sum, l) => sum + (l.views || 0), 0)
   const totalClicks  = listings.reduce((sum, l) => sum + (l.whatsapp_clicks || 0), 0)
 
@@ -392,7 +357,7 @@ export default function AdminPage() {
   const listingsViewedFor = (userId: string) => new Set(viewEvents.filter(e => e.viewer_id === userId).map(e => e.listing_id)).size
 
   const agentStats: AgentStat[] = agents.map(agent => {
-    const agentListings = listings.filter(l => l.users?.email === agent.email)
+    const agentListings = listings.filter(l => l.agent_id === agent.id)
     return {
       agent,
       listings: agentListings,
@@ -402,13 +367,25 @@ export default function AdminPage() {
     }
   }).sort((a, b) => b.totalClicks - a.totalClicks)
 
+  const filteredAgentStats = agentStats.filter(({ agent }) => {
+    if (!agentSearch.trim()) return true
+    const q = agentSearch.toLowerCase()
+    return agent.full_name.toLowerCase().includes(q) || agent.email.toLowerCase().includes(q)
+  })
+
+  const filteredStudents = students.filter(s => {
+    if (!studentSearch.trim()) return true
+    const q = studentSearch.toLowerCase()
+    return s.full_name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+  })
+
   // Chart data source depends on the selected metric
   const chartSource = metric === 'listings' ? listings : metric === 'views' ? viewEvents : clickEvents
   const chartData = buildTrendData(chartSource, period)
   const chartTitles: Record<Metric, string> = { listings: 'New listings', views: 'Listing views', clicks: 'WhatsApp clicks' }
 
   const recentActivity = [
-    ...listings.slice(0, 5).map(l => ({ type: 'listing' as const, label: `New listing: ${l.name}`, sub: l.users?.full_name || 'Unknown agent', created_at: l.created_at })),
+    ...listings.slice(0, 5).map(l => ({ type: 'listing' as const, label: `New listing: ${l.name}`, sub: l.users?.full_name || 'Unknown agent', created_at: l.created_at || '' })),
     ...users.slice(0, 5).map(u => ({ type: 'signup' as const, label: `${u.role === 'agent' ? 'Agent' : 'Student'} joined: ${u.full_name}`, sub: u.email, created_at: u.created_at })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6)
 
@@ -524,13 +501,13 @@ export default function AdminPage() {
     </>
   )
 
-  return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#F4F6F5' }}>
+    return (
+      <div className="h-screen flex overflow-hidden" style={{ backgroundColor: '#F4F6F5' }}>
 
-      {/* ── Desktop sidebar ── */}
-      <aside className="hidden md:flex w-60 shrink-0 flex-col justify-between p-5" style={{ backgroundColor: '#FFFFFF', borderRight: '1px solid #E8EDEB' }}>
-        <SidebarContent />
-      </aside>
+        {/* ── Desktop sidebar — pinned, own scroll only if it ever overflows ── */}
+        <aside className="hidden md:flex w-60 shrink-0 flex-col justify-between p-5 overflow-y-auto" style={{ backgroundColor: '#FFFFFF', borderRight: '1px solid #E8EDEB' }}>
+          <SidebarContent />
+        </aside>
 
       {/* ── NEW: Mobile drawer sidebar ── */}
       {mobileMenuOpen && (
@@ -542,41 +519,42 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* ── Main content ── */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between px-4 sm:px-8 py-5" style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E8EDEB' }}>
-          <div className="flex items-center gap-3">
-            {/* NEW: hamburger, mobile only */}
-            <button onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer"
-              style={{ backgroundColor: '#F4F6F5', color: '#034338' }}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <div>
-              <h1 className="text-lg font-black" style={{ color: '#0A2A23' }}>{tabTitles[tab]}</h1>
-              <p className="text-xs font-medium hidden sm:block" style={{ color: '#4B6B62' }}>Hostel Finder admin</p>
+        {/* ── Main content — its own column; only the content below the header scrolls ── */}
+          <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-4 sm:px-8 py-5" style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E8EDEB' }}>
+            <div className="flex items-center gap-3">
+              {/* NEW: hamburger, mobile only */}
+              <button onClick={() => setMobileMenuOpen(true)}
+                className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer"
+                style={{ backgroundColor: '#F4F6F5', color: '#034338' }}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <div>
+                <h1 className="text-lg font-black" style={{ color: '#0A2A23' }}>{tabTitles[tab]}</h1>
+                <p className="text-xs font-medium hidden sm:block" style={{ color: '#4B6B62' }}>Hostel Finder admin</p>
+              </div>
             </div>
+            <button onClick={fetchData}
+              className="text-xs font-bold px-3 py-2 rounded-lg border transition-colors cursor-pointer hover:bg-gray-50"
+              style={{ color: '#034338', borderColor: '#E8EDEB' }}>
+              Refresh
+            </button>
           </div>
-          <button onClick={fetchData}
-            className="text-xs font-bold px-3 py-2 rounded-lg border transition-colors cursor-pointer hover:bg-gray-50"
-            style={{ color: '#034338', borderColor: '#E8EDEB' }}>
-            Refresh
-          </button>
-        </div>
 
-        <div className="p-4 sm:p-8">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
 
           {/* ══════════ OVERVIEW ══════════ */}
           {tab === 'overview' && (
             <div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 {[
                   { label: 'Total listings', value: listings.length, bg: '#DBEAFE', color: '#1E40AF', icon: ICONS.listings },
                   { label: 'Active agents',  value: agents.length,   bg: '#DCFCE7', color: '#166534', icon: ICONS.agents },
                   { label: 'Total students', value: students.length, bg: '#EDE9FE', color: '#5B21B6', icon: ICONS.students },
                   { label: 'Pending reports', value: pendingReportsCount, bg: pendingReportsCount > 0 ? '#FEE2E2' : '#F4F6F5', color: pendingReportsCount > 0 ? '#DC2626' : '#6B7280', icon: ICONS.reports },
+                  { label: 'Confirmed conversions', value: conversions.length, bg: '#D1FAE5', color: '#047857', icon: ICONS.conversions },
                 ].map(stat => (
                   <div key={stat.label} className="bg-white rounded-2xl p-4 shadow-sm">
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ backgroundColor: stat.bg, color: stat.color }}>
@@ -827,8 +805,21 @@ export default function AdminPage() {
           {/* ══════════ LISTINGS ══════════ */}
           {tab === 'listings' && (
             <div>
+              <div className="relative mb-4">
+                <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: '#9CA3AF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={listingSearch}
+                  onChange={e => setListingSearch(e.target.value)}
+                  placeholder="Search by listing name, area, agent name or email..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none border bg-white"
+                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                />
+              </div>
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['pending', 'active', 'inactive', 'all'] as const).map(s => (
+                {(['pending', 'active', 'inactive', 'rejected', 'all'] as const).map(s => (
                   <button key={s} onClick={() => setStatusFilter(s)}
                     className="text-xs font-bold px-4 py-2 rounded-full transition-all cursor-pointer capitalize"
                     style={statusFilter === s
@@ -855,13 +846,13 @@ export default function AdminPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2 mb-1">
                             <h3 className="font-black text-sm" style={{ color: '#0A2A23' }}>{listing.name}</h3>
-                            <span className="text-xs font-bold px-2 py-0.5 rounded-full capitalize"
-                              style={{
-                                backgroundColor: listing.status === 'active' ? '#DCFCE7' : listing.status === 'pending' ? '#FEF3C7' : '#F3F4F6',
-                                color: listing.status === 'active' ? '#166534' : listing.status === 'pending' ? '#92400E' : '#6B7280',
-                              }}>
-                              {listing.status}
-                            </span>
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full capitalize"
+                                style={{
+                                  backgroundColor: listing.status === 'active' ? '#DCFCE7' : listing.status === 'pending' ? '#FEF3C7' : listing.status === 'rejected' ? '#FEE2E2' : '#F3F4F6',
+                                  color: listing.status === 'active' ? '#166534' : listing.status === 'pending' ? '#92400E' : listing.status === 'rejected' ? '#DC2626' : '#6B7280',
+                                }}>
+                                {listing.status}
+                              </span>
                           </div>
                           <p className="text-xs font-medium" style={{ color: '#4B6B62' }}>
                             {listing.area} · {roomTypeLabel[listing.room_type] || listing.room_type} · ₦{listing.price.toLocaleString()}/yr
@@ -886,6 +877,13 @@ export default function AdminPage() {
                               className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-1.5"
                               style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>
                               {actionId === listing.id ? '...' : '✓ Approve'}
+                            </button>
+                          )}
+                          {listing.status === 'pending' && (
+                            <button onClick={() => setActionModal({ type: 'listing_reject', listingId: listing.id, listingName: listing.name })}
+                              className="text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                              style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                              Reject
                             </button>
                           )}
                           {listing.status === 'active' && (
@@ -914,6 +912,19 @@ export default function AdminPage() {
           {/* ══════════ AGENTS ══════════ */}
           {tab === 'agents' && (
             <div>
+              <div className="relative mb-4">
+                <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: '#9CA3AF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={agentSearch}
+                  onChange={e => setAgentSearch(e.target.value)}
+                  placeholder="Search by agent name or email..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none border bg-white"
+                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                />
+              </div>
               <div className="grid grid-cols-3 gap-4 mb-6">
                 {[
                   { label: 'Total agents', value: agents.length },
@@ -933,7 +944,7 @@ export default function AdminPage() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {agentStats.map(({ agent, listings: agentListings, totalViews: av, totalClicks: ac, activeListings: al }) => (
+                  {filteredAgentStats.map(({ agent, listings: agentListings, totalViews: av, totalClicks: ac, activeListings: al }) => (
                     <div key={agent.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                       {/* ── Always-visible summary row ── */}
                       <div className="p-5">
@@ -952,6 +963,11 @@ export default function AdminPage() {
                                 {agent.is_suspended && (
                                   <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
                                     Suspended
+                                  </span>
+                                )}
+                                {agent.university && (
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F4F6F5', color: '#4B6B62' }}>
+                                    🎓 {agent.university}
                                   </span>
                                 )}
                                 {/* NEW: warning count, always visible */}
@@ -1044,8 +1060,8 @@ export default function AdminPage() {
                                   <p className="text-sm font-bold truncate" style={{ color: '#0A2A23' }}>{listing.name}</p>
                                   <span className="text-xs font-bold px-2 py-0.5 rounded-full capitalize"
                                     style={{
-                                      backgroundColor: listing.status === 'active' ? '#DCFCE7' : listing.status === 'pending' ? '#FEF3C7' : '#F3F4F6',
-                                      color: listing.status === 'active' ? '#166534' : listing.status === 'pending' ? '#92400E' : '#6B7280',
+                                      backgroundColor: listing.status === 'active' ? '#DCFCE7' : listing.status === 'pending' ? '#FEF3C7' : listing.status === 'rejected' ? '#FEE2E2' : '#F3F4F6',
+                                      color: listing.status === 'active' ? '#166534' : listing.status === 'pending' ? '#92400E' : listing.status === 'rejected' ? '#DC2626' : '#6B7280',
                                     }}>
                                     {listing.status}
                                   </span>
@@ -1066,9 +1082,11 @@ export default function AdminPage() {
                     </div>
                   ))}
 
-                  {agentStats.length === 0 && (
+                  {filteredAgentStats.length === 0 && (
                     <div className="bg-white rounded-2xl p-10 text-center shadow-sm">
-                      <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>No agents yet</p>
+                      <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>
+                        {agents.length === 0 ? 'No agents yet' : 'No agents match your search'}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1079,6 +1097,19 @@ export default function AdminPage() {
           {/* ══════════ STUDENTS ══════════ */}
           {tab === 'students' && (
             <div>
+              <div className="relative mb-4">
+                <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: '#9CA3AF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={studentSearch}
+                  onChange={e => setStudentSearch(e.target.value)}
+                  placeholder="Search by student name or email..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none border bg-white"
+                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4 mb-6">
                 {[
                   { label: 'Total students', value: students.length },
@@ -1097,7 +1128,7 @@ export default function AdminPage() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {students.map(student => (
+                  {filteredStudents.map(student => (
                     <div key={student.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shrink-0"
@@ -1113,6 +1144,11 @@ export default function AdminPage() {
                             {student.is_suspended && (
                               <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
                                 Suspended
+                              </span>
+                            )}
+                            {student.university && (
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F4F6F5', color: '#4B6B62' }}>
+                                🎓 {student.university}
                               </span>
                             )}
                             {/* NEW: per-student listings-viewed count */}
@@ -1143,9 +1179,11 @@ export default function AdminPage() {
                       </div>
                     </div>
                   ))}
-                  {students.length === 0 && (
+                  {filteredStudents.length === 0 && (
                     <div className="bg-white rounded-2xl p-10 text-center shadow-sm">
-                      <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>No students yet</p>
+                      <p className="font-bold text-sm" style={{ color: '#0A2A23' }}>
+                        {students.length === 0 ? 'No students yet' : 'No students match your search'}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1172,6 +1210,17 @@ export default function AdminPage() {
           title={`Suspend ${actionModal.agentName}`}
           description="This immediately signs the agent out and blocks access. They'll see this reason on the suspended screen."
           confirmLabel="Suspend agent"
+          confirmColor="#DC2626"
+          submitting={modalSubmitting}
+          onCancel={() => setActionModal(null)}
+          onConfirm={handleModalConfirm}
+        />
+      )}
+       {actionModal && actionModal.type === 'listing_reject' && (
+        <AdminActionModal
+          title={`Reject "${actionModal.listingName}"`}
+          description="The agent will see this exact reason and can fix it before resubmitting."
+          confirmLabel="Reject listing"
           confirmColor="#DC2626"
           submitting={modalSubmitting}
           onCancel={() => setActionModal(null)}

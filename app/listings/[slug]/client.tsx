@@ -1,5 +1,7 @@
 'use client'
 
+import { ROOM_TYPE_LABELS, ROOM_TYPE_BADGE_COLORS, FACILITY_ICONS } from '@/lib/constants'
+import type { Listing as ListingDetail } from '@/lib/types'
 import ConversionPrompt from '@/components/ConversionPrompt'
 import ReportAgentButton from '@/components/ReportAgentButton'
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -9,32 +11,10 @@ import Navbar from '@/components/Navbar'
 import { supabase } from '@/lib/supabase'
 
 interface Photo { photo_url: string; is_cover: boolean; sort_order: number }
-interface ListingDetail {
-  id: string; name: string; description: string; area: string
-  distance_tag: string; price: number; room_type: string
-  rooms_available: number; facilities: string[]; whatsapp_number: string
-  video_url: string | null; slug: string; views: number; address: string | null
-  status: string; whatsapp_clicks: number  // ← add this
-  agent_id: string // NEW
-  listing_photos: Photo[]
-  users: { full_name: string; phone: string | null }
-}
 
-const roomTypeMap: Record<string, string> = {
-  self_contain: 'Self-contain', single: 'Single Room',
-  shared: 'Shared Room',       mini_flat: 'Mini Flat',
-}
-const roomTypeBadge: Record<string, { bg: string; text: string }> = {
-  'Self-contain': { bg: '#DCFCE7', text: '#166534' },
-  'Single Room':  { bg: '#DBEAFE', text: '#1E40AF' },
-  'Shared Room':  { bg: '#FEF3C7', text: '#92400E' },
-  'Mini Flat':    { bg: '#EDE9FE', text: '#5B21B6' },
-}
-const facilityIcons: Record<string, string> = {
-  'Running water': '💧', 'Electricity': '⚡', 'Prepaid meter': '🔌',
-  'Security': '🔒', 'Parking': '🚗', 'Wi-Fi': '📶',
-  'Fence/gate': '🏠', 'Borehole': '🚰',
-}
+const roomTypeMap = ROOM_TYPE_LABELS
+const roomTypeBadge = ROOM_TYPE_BADGE_COLORS
+const facilityIcons = FACILITY_ICONS
 
 export default function HostelDetailClient({ slug }: { slug: string }) {
   const [listing, setListing]         = useState<ListingDetail | null>(null)
@@ -514,7 +494,7 @@ const handleShare = async () => {
               </div>
             </div>
 
-            {listing.facilities?.length > 0 && (
+            {listing.facilities && listing.facilities.length > 0 && (
               <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
                 <h2 className="text-base font-bold mb-4" style={{ color: '#0A2A23' }}>Facilities</h2>
                 <div className="flex flex-wrap gap-2">
@@ -533,7 +513,7 @@ const handleShare = async () => {
                 <div className="p-5">
                   <div className="flex items-start justify-between mb-4">
                     <p className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>LISTED BY</p>
-                    <ReportAgentButton agentId={listing.agent_id} agentName={listing.users?.full_name || 'this agent'} listingId={listing.id} />
+                    <ReportAgentButton agentId={listing.agent_id!} agentName={listing.users?.full_name || 'this agent'} listingId={listing.id} />
                   </div>
                   <div className="flex items-center gap-3 mb-5">
                     <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-lg shrink-0" style={{ backgroundColor: '#37D76A', color: '#034338' }}>
@@ -626,7 +606,7 @@ const handleShare = async () => {
                 <div className="p-5">
                   <div className="flex items-start justify-between mb-4">
                     <p className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.55)' }}>LISTED BY</p>
-                    <ReportAgentButton agentId={listing.agent_id} agentName={listing.users?.full_name || 'this agent'} listingId={listing.id} />
+                    <ReportAgentButton agentId={listing.agent_id!} agentName={listing.users?.full_name || 'this agent'} listingId={listing.id} />
                   </div>
                   <div className="flex items-center gap-3 mb-5">
                     <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-lg shrink-0" style={{ backgroundColor: '#37D76A', color: '#034338' }}>

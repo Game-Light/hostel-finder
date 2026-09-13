@@ -1,5 +1,7 @@
 'use client'
 
+import { ROOM_TYPE_LABELS, ROOM_TYPE_BADGE_COLORS } from '@/lib/constants'
+import type { Listing } from '@/lib/types'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -8,31 +10,8 @@ import Navbar from '@/components/Navbar'
 import AuthGateModal from '@/components/AuthGateModal'
 import { supabase } from '@/lib/supabase'
 
-interface Listing {
-  id: string
-  name: string
-  area: string
-  distance_tag: string
-  price: number
-  room_type: string
-  rooms_available: number
-  slug: string
-  listing_photos: { photo_url: string; is_cover: boolean }[]
-}
-
-const roomTypeMap: Record<string, string> = {
-  self_contain: 'Self-contain',
-  single:       'Single Room',
-  shared:       'Shared Room',
-  mini_flat:    'Mini Flat',
-}
-
-const roomTypeBadge: Record<string, { bg: string; text: string }> = {
-  'Self-contain': { bg: '#DCFCE7', text: '#166534' },
-  'Single Room':  { bg: '#DBEAFE', text: '#1E40AF' },
-  'Shared Room':  { bg: '#FEF3C7', text: '#92400E' },
-  'Mini Flat':    { bg: '#EDE9FE', text: '#5B21B6' },
-}
+const roomTypeMap = ROOM_TYPE_LABELS
+const roomTypeBadge = ROOM_TYPE_BADGE_COLORS
 
 const CHIPS = [
   { label: 'All',          value: '' },

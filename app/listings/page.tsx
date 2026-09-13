@@ -6,33 +6,15 @@ import { useSearchParams } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import AuthGateModal from '@/components/AuthGateModal'
 import { supabase } from '@/lib/supabase'
+import { ROOM_TYPE_LABELS, ROOM_TYPE_LABEL_TO_DB, ROOM_TYPE_BADGE_COLORS, ROOM_TYPE_FILTER_OPTIONS } from '@/lib/constants'
+import type { Listing } from '@/lib/types'
 
-interface Listing {
-  id: string; name: string; area: string; distance_tag: string
-  price: number; room_type: string; rooms_available: number; slug: string
-  listing_photos: { photo_url: string; is_cover: boolean }[]
-}
+const ROOM_TYPES = ROOM_TYPE_FILTER_OPTIONS
+const roomTypeMap = ROOM_TYPE_LABELS
+const roomTypeToDb = ROOM_TYPE_LABEL_TO_DB
+const urlTypeToLabel = ROOM_TYPE_LABELS
+const roomTypeBadge = ROOM_TYPE_BADGE_COLORS
 
-const ROOM_TYPES = ['All', 'Self-contain', 'Single Room', 'Shared Room', 'Mini Flat']
-
-const roomTypeMap: Record<string, string> = {
-  self_contain: 'Self-contain', single: 'Single Room',
-  shared: 'Shared Room', mini_flat: 'Mini Flat',
-}
-const roomTypeToDb: Record<string, string> = {
-  'Self-contain': 'self_contain', 'Single Room': 'single',
-  'Shared Room': 'shared', 'Mini Flat': 'mini_flat',
-}
-const urlTypeToLabel: Record<string, string> = {
-  self_contain: 'Self-contain', single: 'Single Room',
-  shared: 'Shared Room', mini_flat: 'Mini Flat',
-}
-const roomTypeBadge: Record<string, { bg: string; text: string }> = {
-  'Self-contain': { bg: '#DCFCE7', text: '#166534' },
-  'Single Room': { bg: '#DBEAFE', text: '#1E40AF' },
-  'Shared Room': { bg: '#FEF3C7', text: '#92400E' },
-  'Mini Flat': { bg: '#EDE9FE', text: '#5B21B6' },
-}
 const SORT_OPTIONS = [
   { label: 'Newest first', value: 'newest' },
   { label: 'Price: Low–High', value: 'price_asc' },

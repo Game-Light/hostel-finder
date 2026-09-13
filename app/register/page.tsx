@@ -3,13 +3,13 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import SchoolSelect from '@/components/SchoolSelect'
 
 type Role = 'student' | 'agent'
-type Step = 'role' | 'details'
+type Step = 'role' | 'details' | 'verify'
 
-const AGENT_INVITE_CODE = process.env.NEXT_PUBLIC_AGENT_INVITE_CODE || 'FUOYE2026'
+const AGENT_INVITE_CODE = process.env.NEXT_PUBLIC_AGENT_INVITE_CODE
 
 function generateReferralCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -20,73 +20,95 @@ function generateReferralCode(): string {
   return code
 }
 
+function generateTempPassword(): string {
+  return crypto.randomUUID() + crypto.randomUUID()
+}
+
+// Shared by both the email/password path and the Google path — validates
+// an agent's invite/referral code without creating any account yet.
+async function validateAgentInvite(code: string): Promise<{ ok: boolean; referredById: string | null; error?: string }> {
+  if (!AGENT_INVITE_CODE) {
+    console.error('NEXT_PUBLIC_AGENT_INVITE_CODE is not set in the environment.')
+    return { ok: false, referredById: null, error: 'Agent signup is temporarily unavailable. Please try again later.' }
+  }
+
+  if (!code.trim()) {
+    return { ok: false, referredById: null, error: 'An invite code or referral code is required.' }
+  }
+
+  const isGlobalCode = code.trim().toUpperCase() === AGENT_INVITE_CODE.toUpperCase()
+  if (isGlobalCode) return { ok: true, referredById: null }
+
+  const { data: referrer } = await supabase
+    .from('users')
+    .select('id')
+    .eq('referral_code', code.trim().toUpperCase())
+    .eq('role', 'agent')
+    .single()
+
+  if (!referrer) {
+    return { ok: false, referredById: null, error: 'Invalid invite or referral code. Check the code and try again.' }
+  }
+
+  return { ok: true, referredById: referrer.id }
+}
+
 export default function RegisterPage() {
-  const router = useRouter()
   const [step, setStep]             = useState<Step>('role')
   const [role, setRole]             = useState<Role>('student')
   const [fullName, setFullName]     = useState('')
   const [email, setEmail]           = useState('')
-  const [phone, setPhone]           = useState('')
-  const [password, setPassword]     = useState('')
+  const [school, setSchool]         = useState('Federal University Oye-Ekiti (FUOYE)')
   const [inviteCode, setInviteCode] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+  const [nameConfirmed, setNameConfirmed] = useState(false)
   const [loading, setLoading]       = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError]           = useState('')
+  const [resending, setResending]   = useState(false)
+  const [resendMsg, setResendMsg]   = useState('')
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.')
+    if (!school.trim()) {
+      setError('Please select or enter your school.')
       return
     }
 
-    if (role === 'agent') {
-      if (!inviteCode.trim()) {
-        setError('An invite code or referral code is required.')
-        return
-      }
+    if (!nameConfirmed) {
+      setError('Please confirm the name you entered is your real name.')
+      return
     }
 
     setLoading(true)
 
-    // For agents, validate the code — either global invite or a referral code
     let referredById: string | null = null
+    let referralCode: string | null = null
 
     if (role === 'agent') {
-      const isGlobalCode = inviteCode.trim().toUpperCase() === AGENT_INVITE_CODE.toUpperCase()
-
-      if (!isGlobalCode) {
-        // Check if it's a valid referral code
-        const { data: referrer } = await supabase
-          .from('users')
-          .select('id')
-          .eq('referral_code', inviteCode.trim().toUpperCase())
-          .eq('role', 'agent')
-          .single()
-
-        if (!referrer) {
-          setError('Invalid invite or referral code. Check the code and try again.')
-          setLoading(false)
-          return
-        }
-
-        referredById = referrer.id
+      const check = await validateAgentInvite(inviteCode)
+      if (!check.ok) {
+        setError(check.error || 'Invalid invite code.')
+        setLoading(false)
+        return
       }
+      referredById = check.referredById
+      referralCode = generateReferralCode()
     }
-
-    // Generate a referral code for new agents
-    const referralCode = role === 'agent' ? generateReferralCode() : null
 
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email,
-      password,
+      password: generateTempPassword(),
       options: {
         data: {
           full_name: fullName,
           role,
+          university: school.trim(),
+          referral_code: referralCode,
+          referred_by: referredById,
         },
+        emailRedirectTo: `${window.location.origin}/complete-signup`,
       },
     })
 
@@ -96,31 +118,69 @@ export default function RegisterPage() {
       return
     }
 
-    const userId = authData.user?.id
-    if (!userId) {
+    if (!authData.user?.id) {
       setError('Something went wrong. Please try again.')
       setLoading(false)
       return
     }
 
-    // Update the users table with referral data
-    if (role === 'agent') {
-      await supabase
-        .from('users')
-        .update({
-          referral_code: referralCode,
-          referred_by: referredById,
-        })
-        .eq('id', userId)
+    setLoading(false)
+    setStep('verify')
+  }
 
-      // Award referral points via secure database function
-      if (referredById) {
-        await supabase.rpc('increment_referral_points', { referrer_id: referredById })
+  const handleResend = async () => {
+    setResending(true)
+    setResendMsg('')
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/complete-signup` },
+    })
+    setResending(false)
+    setResendMsg(resendError ? 'Could not resend. Try again in a moment.' : 'Email resent — check your inbox.')
+  }
+
+  // Google path — for agents, the invite code is checked BEFORE we ever
+  // redirect to Google, so an invalid code never even starts the OAuth flow.
+  // Anything we need after the redirect (role, referral info) can't be
+  // passed through Google's OAuth params, so it's stashed in localStorage
+  // and picked up on /auth/callback once a session actually exists.
+  const handleGoogleSignIn = async () => {
+    setError('')
+
+    let referredById: string | null = null
+    let referralCode: string | null = null
+
+    if (role === 'agent') {
+      setGoogleLoading(true)
+      const check = await validateAgentInvite(inviteCode)
+      if (!check.ok) {
+        setError(check.error || 'Invalid invite code.')
+        setGoogleLoading(false)
+        return
       }
+      referredById = check.referredById
+      referralCode = generateReferralCode()
     }
 
-    setLoading(false)
-    router.push(role === 'agent' ? '/agent/dashboard' : '/listings')
+    localStorage.setItem('hf_pending_google_signup', JSON.stringify({
+      role,
+      referralCode,
+      referredById,
+    }))
+
+    setGoogleLoading(true)
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    })
+
+    if (oauthError) {
+      setError(oauthError.message)
+      setGoogleLoading(false)
+      localStorage.removeItem('hf_pending_google_signup')
+    }
+    // No further code runs on success — the browser navigates away to Google.
   }
 
   return (
@@ -168,12 +228,12 @@ export default function RegisterPage() {
             {step === 'role' && (
               <div>
                 <h1 className="text-2xl font-black mb-1" style={{ color: '#0A2A23' }}>Create your account</h1>
-                <p className="text-sm font-medium mb-8" style={{ color: '#4B6B62' }}>I am joining as a...</p>
+                <p className="text-sm font-medium mb-8" style={{ color: '#4B6B62' }}>How will you be using Hostel Finder?</p>
 
-                <div className="flex flex-col gap-4 mb-8">
+                <div className="flex flex-col gap-3 mb-6">
                   {[
-                    { value: 'student' as Role, title: 'Student', desc: 'I want to find a hostel near FUOYE', icon: '🎓' },
-                    { value: 'agent' as Role, title: 'Hostel Agent / Landlord', desc: 'I want to list my hostel and reach students', icon: '🏠' },
+                    { value: 'student' as Role, icon: '🎓', title: 'I\'m a student', desc: 'Looking for a hostel near school' },
+                    { value: 'agent' as Role,   icon: '🏠', title: 'I\'m an agent',   desc: 'I manage or own hostel properties' },
                   ].map(option => (
                     <button
                       key={option.value}
@@ -244,13 +304,59 @@ export default function RegisterPage() {
                 <h1 className="text-2xl font-black mb-1" style={{ color: '#0A2A23' }}>
                   {role === 'student' ? 'Student' : 'Agent'} account
                 </h1>
-                <p className="text-sm font-medium mb-8" style={{ color: '#4B6B62' }}>Fill in your details to get started</p>
+                <p className="text-sm font-medium mb-6" style={{ color: '#4B6B62' }}>Fill in your details to get started</p>
 
                 {error && (
                   <div className="mb-5 px-4 py-3 rounded-xl text-sm font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
                     {error}
                   </div>
                 )}
+
+                {/* Agent invite code — must be entered before Google sign-in works too,
+                    since Google can't carry this value through the OAuth redirect. */}
+                {role === 'agent' && (
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
+                      Invite code or referral code <span style={{ color: '#DC2626' }}>*</span>
+                    </label>
+                    <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
+                      placeholder="Enter invite or referral code"
+                      className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
+                      style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
+                      onFocus={e => e.target.style.borderColor = '#034338'}
+                      onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
+                    <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
+                      Needed whether you sign up with email or Google.{' '}
+                      <a href="https://wa.me/2349122781346?text=Hi, I want to list my hostel on Hostel Finder. Can I get the agent code?"
+                        target="_blank" rel="noopener noreferrer"
+                        className="font-bold hover:underline" style={{ color: '#034338' }}>
+                        Get a code on WhatsApp
+                      </a>
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={googleLoading}
+                  className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-bold text-sm border transition-colors hover:bg-gray-50 disabled:opacity-60 cursor-pointer mb-5"
+                  style={{ borderColor: '#E8EDEB', color: '#0A2A23' }}
+                >
+                  <svg className="w-4.5 h-4.5" viewBox="0 0 48 48">
+                    <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+                    <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
+                    <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
+                    <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l6.19 5.238C39.802 36.556 44 30.865 44 24c0-1.341-.138-2.65-.389-3.917z"/>
+                  </svg>
+                  {googleLoading ? 'Connecting to Google...' : `Continue with Google as ${role === 'student' ? 'Student' : 'Agent'}`}
+                </button>
+
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="flex-1 h-px" style={{ backgroundColor: '#E8EDEB' }} />
+                  <span className="text-xs font-bold" style={{ color: '#9CA3AF' }}>OR SIGN UP WITH EMAIL</span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: '#E8EDEB' }} />
+                </div>
 
                 <form onSubmit={handleRegister} className="flex flex-col gap-4">
                   <div>
@@ -273,61 +379,27 @@ export default function RegisterPage() {
                       onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
                   </div>
 
-                  {role === 'agent' && (
-                    <>
-                    <div>
-                        <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>
-                          Invite code or referral code <span style={{ color: '#DC2626' }}>*</span>
-                        </label>
-                        <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
-                          placeholder="Enter invite or referral code"
-                          required
-                          className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors"
-                          style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
-                          onFocus={e => e.target.style.borderColor = '#034338'}
-                          onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
-                        <p className="text-xs font-medium mt-1" style={{ color: '#4B6B62' }}>
-                          Use the global invite code or a referral code from an existing agent.{' '}
-                          <a href="https://wa.me/2349122781346?text=Hi, I want to list my hostel on Hostel Finder. Can I get the agent code?"
-                            target="_blank" rel="noopener noreferrer"
-                            className="font-bold hover:underline" style={{ color: '#034338' }}>
-                            Get a code on WhatsApp
-                          </a>
-                        </p>
-                      </div>
-                    </>
-                  )}
-
                   <div>
-                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>Password</label>
-                    <div className="relative">
-                      <input type={showPassword ? 'text' : 'password'} value={password}
-                        onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" required
-                        className="w-full px-4 py-3 rounded-xl text-sm outline-none border transition-colors pr-12"
-                        style={{ borderColor: '#E8EDEB', backgroundColor: '#FFFFFF', color: '#0A2A23' }}
-                        onFocus={e => e.target.style.borderColor = '#034338'}
-                        onBlur={e => e.target.style.borderColor = '#E8EDEB'} />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer"
-                        style={{ color: '#4B6B62' }}>
-                        {showPassword ? (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
+                    <label className="block text-xs font-bold mb-1.5" style={{ color: '#0A2A23' }}>School</label>
+                    <SchoolSelect value={school} onChange={setSchool} required />
                   </div>
+
+                  <label className="flex items-start gap-3 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={nameConfirmed}
+                      onChange={e => setNameConfirmed(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 shrink-0 cursor-pointer"
+                    />
+                    <span className="text-xs font-medium" style={{ color: '#4B6B62' }}>
+                      I confirm the name above is my real name.
+                    </span>
+                  </label>
 
                   <button type="submit" disabled={loading}
                     className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-opacity hover:opacity-90 mt-2 disabled:opacity-60 cursor-pointer"
                     style={{ backgroundColor: '#034338' }}>
-                    {loading ? 'Creating account...' : 'Create account'}
+                    {loading ? 'Sending verification email...' : 'Continue'}
                   </button>
                 </form>
 
@@ -335,6 +407,50 @@ export default function RegisterPage() {
                   By signing up you agree to our{' '}
                   <Link href="/privacy" className="underline" style={{ color: '#034338' }}>Privacy Policy</Link>
                 </p>
+              </div>
+            )}
+
+            {/* Step 3 — Verify email (email/password path only; Google users skip this) */}
+            {step === 'verify' && (
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: '#E8F5EE' }}>
+                  <svg className="w-8 h-8" style={{ color: '#034338' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-black mb-2" style={{ color: '#0A2A23' }}>Check your email</h1>
+                <p className="text-sm font-medium mb-1" style={{ color: '#4B6B62' }}>
+                  We sent a verification link to
+                </p>
+                <p className="text-sm font-bold mb-6" style={{ color: '#0A2A23' }}>{email}</p>
+                <p className="text-xs font-medium mb-8 leading-relaxed" style={{ color: '#4B6B62' }}>
+                  Click the link in that email to verify your address, then you'll be able to set your password and finish creating your account.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                  <a href="https://mail.google.com/mail/u/0/#inbox" target="_blank" rel="noopener noreferrer"
+                    className="flex-1 py-3 rounded-xl font-bold text-sm text-white text-center hover:opacity-90 transition-opacity"
+                    style={{ backgroundColor: '#034338' }}>
+                    Open Gmail
+                  </a>
+                  <a href="https://outlook.live.com/mail/0/inbox" target="_blank" rel="noopener noreferrer"
+                    className="flex-1 py-3 rounded-xl font-bold text-sm text-center border hover:bg-gray-50 transition-colors"
+                    style={{ color: '#034338', borderColor: '#E8EDEB' }}>
+                    Open Outlook
+                  </a>
+                </div>
+
+                {resendMsg && (
+                  <p className="text-xs font-medium mb-3" style={{ color: resendMsg.startsWith('Could not') ? '#DC2626' : '#166534' }}>
+                    {resendMsg}
+                  </p>
+                )}
+
+                <button onClick={handleResend} disabled={resending}
+                  className="text-sm font-bold hover:underline cursor-pointer disabled:opacity-60"
+                  style={{ color: '#034338' }}>
+                  {resending ? 'Resending...' : "Didn't get it? Resend email"}
+                </button>
               </div>
             )}
           </div>

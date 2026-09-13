@@ -5,36 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import { supabase } from '@/lib/supabase'
-
-const FACILITIES = [
-  'Running water', 'Electricity', 'Prepaid meter',
-  'Security', 'Parking', 'Wi-Fi', 'Fence/gate', 'Borehole',
-]
-
-const ROOM_TYPES = [
-  { value: 'self_contain', label: 'Self-contain' },
-  { value: 'single',       label: 'Single Room' },
-  { value: 'shared',       label: 'Shared Room' },
-  { value: 'mini_flat',    label: 'Mini Flat' },
-]
-
-const DISTANCE_OPTIONS = [
-  'Walking distance',
-  '5 mins walk',
-  '10 mins walk',
-  '15+ mins walk',
-]
-
-const FUOYE_AREAS = [
-  'Oye Town', 'School Road', 'Behind Campus',
-  'Ikole Road', 'New Site', 'Other',
-]
-
-const RENT_DURATIONS = [
-  { value: '12', label: '12 months (1 year)' },
-  { value: '6',  label: '6 months' },
-  { value: 'other', label: 'Other' },
-]
+import { FACILITIES, ROOM_TYPE_FORM_OPTIONS as ROOM_TYPES, DISTANCE_OPTIONS, FUOYE_AREAS, RENT_DURATIONS } from '@/lib/constants'
 
 function generateSlug(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')

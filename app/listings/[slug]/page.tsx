@@ -1,16 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Metadata } from 'next'
 import HostelDetailClient from './client'
+import { ROOM_TYPE_LABELS } from '@/lib/constants'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const roomTypeMap: Record<string, string> = {
-  self_contain: 'Self-contain', single: 'Single Room',
-  shared: 'Shared Room', mini_flat: 'Mini Flat',
-}
+const roomTypeMap = ROOM_TYPE_LABELS
 
 interface Props {
   params: Promise<{ slug: string }>

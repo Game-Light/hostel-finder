@@ -12,6 +12,7 @@ interface UserProfile {
   role: string
   is_suspended: boolean
   suspension_reason: string | null
+  avatar_url: string | null
 }
 
 interface Warning {
@@ -34,7 +35,7 @@ export default function Navbar() {
   const checkSuspension = async (userId: string): Promise<UserProfile | null> => {
     const { data } = await supabase
       .from('users')
-      .select('full_name, role, is_suspended, suspension_reason')
+      .select('full_name, role, is_suspended, suspension_reason, avatar_url')
       .eq('id', userId)
       .single()
     return data || null
@@ -133,10 +134,19 @@ export default function Navbar() {
             <div className="relative">
               <button onClick={() => setMenuOpen(!menuOpen)}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-full transition-all hover:bg-white/10 cursor-pointer">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0"
-                  style={{ backgroundColor: '#37D76A', color: '#034338' }}>
-                  {firstName.charAt(0).toUpperCase()}
-                </div>
+                {profile.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={profile.full_name}
+                    className="w-8 h-8 rounded-full object-cover shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0"
+                    style={{ backgroundColor: '#37D76A', color: '#034338' }}>
+                    {firstName.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <span className="text-white text-sm font-semibold hidden sm:block">Hi, {firstName}</span>
                 <svg className="w-4 h-4 text-white/60 transition-transform"
                   style={{ transform: menuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
