@@ -222,6 +222,9 @@ export async function DELETE(req: NextRequest) {
       // is the problem, we'll know exactly which and why — instead of the
       // whole route crashing with no information, like last time.
       const cleanupSteps: [string, () => PromiseLike<{ error: unknown }>][] = [
+        // Must run before the users delete below — clears any row that still
+        // points at this user via referred_by, which is what was blocking deletion
+        ['referred_by (clear)', () => supabase.from('users').update({ referred_by: null }).eq('referred_by', id)],
         ['listings',          () => supabase.from('listings').delete().eq('agent_id', id)],
         ['agent_reports (agent)',    () => supabase.from('agent_reports').delete().eq('agent_id', id)],
         ['agent_reports (reporter)', () => supabase.from('agent_reports').delete().eq('reporter_id', id)],
