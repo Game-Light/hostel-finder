@@ -213,38 +213,59 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { id, type } = await req.json()
-  const supabase = getAdminClient()
+  try {
+    const { id, type } = await req.json()
+    const supabase = getAdminClient()
 
     if (type === 'user') {
-    // Clean up everything that references this user explicitly, rather than
-    // trusting cascade behavior we can't fully verify — then delete the
-    // profile row BEFORE the auth user, since deleting auth.users first can
-    // silently fail if anything still references it.
-    await supabase.from('listings').delete().eq('agent_id', id)
-    await supabase.from('agent_reports').delete().eq('agent_id', id)
-    await supabase.from('agent_reports').delete().eq('reporter_id', id)
-    await supabase.from('agent_warnings').delete().eq('agent_id', id)
-    await supabase.from('platform_feedback').delete().eq('user_id', id)
-    await supabase.from('saved_listings').delete().eq('student_id', id)
-    await supabase.from('conversions').delete().eq('student_id', id)
-    await supabase.from('users').delete().eq('id', id)
+      // Each cleanup step is logged individually so if one specific table
+      // is the problem, we'll know exactly which and why — instead of the
+      // whole route crashing with no information, like last time.
+      const cleanupSteps: [string, () => PromiseLike<{ error: unknown }>][] = [
+        ['listings',          () => supabase.from('listings').delete().eq('agent_id', id)],
+        ['agent_reports (agent)',    () => supabase.from('agent_reports').delete().eq('agent_id', id)],
+        ['agent_reports (reporter)', () => supabase.from('agent_reports').delete().eq('reporter_id', id)],
+        ['agent_warnings',    () => supabase.from('agent_warnings').delete().eq('agent_id', id)],
+        ['platform_feedback', () => supabase.from('platform_feedback').delete().eq('user_id', id)],
+        ['saved_listings',    () => supabase.from('saved_listings').delete().eq('student_id', id)],
+        ['conversions',       () => supabase.from('conversions').delete().eq('student_id', id)],
+      ]
 
-    const { error } = await supabase.auth.admin.deleteUser(id)
-    if (error) {
-      console.error('auth.admin.deleteUser failed:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      for (const [label, run] of cleanupSteps) {
+        const { error } = await run()
+        if (error) console.error(`Cleanup step failed (${label}):`, error)
+        // Intentionally not aborting on these — a missing/empty table for
+        // this user shouldn't block the actual account deletion below.
+      }
+
+      const { error: userDeleteError } = await supabase.from('users').delete().eq('id', id)
+      if (userDeleteError) {
+        console.error('public.users delete failed:', userDeleteError)
+        return NextResponse.json({ error: `Could not delete profile row: ${userDeleteError.message}` }, { status: 500 })
+      }
+
+      const { error: authDeleteError } = await supabase.auth.admin.deleteUser(id)
+      if (authDeleteError) {
+        console.error('auth.admin.deleteUser failed:', authDeleteError)
+        return NextResponse.json({ error: `Could not delete auth account: ${authDeleteError.message}` }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true })
     }
 
+    // Default: delete listing
+    const { error } = await supabase.from('listings').delete().eq('id', id)
+    if (error) {
+      console.error('Listing delete failed:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     return NextResponse.json({ success: true })
+
+  } catch (err) {
+    // Catches anything unexpected (bad JSON body, network issue, etc.)
+    // so the route always returns real JSON instead of crashing to an
+    // empty response — this is what caused the "{}" you just saw.
+    console.error('DELETE /api/admin/data crashed:', err)
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown server error' }, { status: 500 })
   }
-
-  // Default: delete listing
-  const { error } = await supabase
-    .from('listings')
-    .delete()
-    .eq('id', id)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
 }
