@@ -14,6 +14,7 @@ const statusStyle: Record<string, { bg: string; text: string; label: string }> =
   active:   { bg: '#DCFCE7', text: '#166534', label: 'Active' },
   pending:  { bg: '#FEF3C7', text: '#92400E', label: 'Pending review' },
   inactive: { bg: '#F3F4F6', text: '#6B7280', label: 'Inactive' },
+  rejected: { bg: '#FEE2E2', text: '#DC2626', label: 'Rejected' },
 }
 
 export default function AgentDashboardPage() {
@@ -307,7 +308,9 @@ export default function AgentDashboardPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {listings.map(listing => (
+            {listings.map(listing => {
+              const status = listing.status && statusStyle[listing.status] ? listing.status : 'pending'
+              return (
               <div key={listing.id} className="bg-white rounded-2xl p-5 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                   <div className="flex-1 min-w-0">
@@ -377,7 +380,7 @@ export default function AgentDashboardPage() {
                   </div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>
