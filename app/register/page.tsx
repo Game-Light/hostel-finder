@@ -237,7 +237,7 @@ export default function RegisterPage() {
                   ].map(option => (
                     <button
                       key={option.value}
-                      onClick={() => setRole(option.value)}
+                      onClick={() => { setRole(option.value); setError('') }}
                       className="flex items-center gap-4 p-5 rounded-2xl border-2 text-left transition-all cursor-pointer"
                       style={{
                         borderColor: role === option.value ? '#034338' : '#E8EDEB',
@@ -292,7 +292,7 @@ export default function RegisterPage() {
             {/* Step 2 — Details */}
             {step === 'details' && (
               <div>
-                <button onClick={() => setStep('role')}
+                <button onClick={() => { setStep('role'); setError('') }}
                   className="flex items-center gap-1.5 text-sm font-semibold mb-6 hover:underline cursor-pointer"
                   style={{ color: '#4B6B62' }}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

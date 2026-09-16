@@ -166,6 +166,19 @@ export default function EditListingPage() {
     }
 
     if (!agentId) return
+
+    // Backgrounding the tab (common on mobile) can pause Supabase's session
+    // auto-refresh timer, so the access token may have quietly expired while
+    // you were away. Forcing a session check here refreshes it if needed —
+    // without this, a stale token makes the save fail with a misleading
+    // "row-level security" error instead of a clear "please log in again".
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      setError('Your session expired. Please log in again.')
+      router.push('/login')
+      return
+    }
+
     setSaving(true)
 
     try {
@@ -238,7 +251,7 @@ export default function EditListingPage() {
 
       if (updateErr) throw new Error(updateErr.message)
 
-      router.push('/agent/dashboard')
+      router.push('/agent/dashboard?updated=true')
 
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')

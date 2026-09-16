@@ -42,10 +42,14 @@ export default function AgentDashboardPage() {
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
       const created = url.searchParams.get('created') === 'true'
+      const updated = url.searchParams.get('updated') === 'true'
       const videoFailed = url.searchParams.get('videoFailed') === 'true'
 
       if (created) {
         setSuccessMsg('Listing submitted! It will go live after review.')
+        setTimeout(() => setSuccessMsg(''), 5000)
+      } else if (updated) {
+        setSuccessMsg('Changes saved.')
         setTimeout(() => setSuccessMsg(''), 5000)
       }
 
@@ -57,7 +61,7 @@ export default function AgentDashboardPage() {
       }
 
       // Clean the URL either way so refreshing doesn't re-trigger the toasts
-      if (created || videoFailed) {
+      if (created || updated || videoFailed) {
         window.history.replaceState({}, '', '/agent/dashboard')
       }
     }
